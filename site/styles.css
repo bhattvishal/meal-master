@@ -20,8 +20,8 @@
   --shadow: 0 1px 2px rgba(60, 40, 20, .06), 0 8px 24px rgba(60, 40, 20, .08);
   --shadow-lg: 0 2px 6px rgba(60, 40, 20, .08), 0 24px 48px rgba(60, 40, 20, .14);
   --radius: 22px;
-  --display: 'Fraunces', Georgia, serif;
-  --sans: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --display: 'Fraunces', 'Noto Serif Devanagari', Georgia, serif;
+  --sans: 'Plus Jakarta Sans', 'Noto Sans Devanagari', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --tabbar-h: 68px;
   color-scheme: light;
 }
@@ -256,9 +256,9 @@ a.meal-card:hover .photo img { transform: scale(1.06); }
 }
 
 .macros { display: grid; gap: 8px; }
-.macro { display: grid; grid-template-columns: 64px 1fr 52px; align-items: center; gap: 10px; font-size: 14px; }
+.macro { display: grid; grid-template-columns: minmax(64px, auto) 1fr auto; align-items: center; gap: 10px; font-size: 14px; }
 .macro .label { font-weight: 600; color: var(--ink-2); }
-.macro .val { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.macro .val { min-width: 52px; white-space: nowrap; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
 .bar { height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
 .bar i { display: block; height: 100%; border-radius: inherit; background: var(--c); width: 0; animation: fill 1s cubic-bezier(.4, 0, .2, 1) forwards; animation-delay: calc(.3s + var(--i, 0) * 80ms); }
 @keyframes fill { to { width: var(--w); } }
@@ -403,7 +403,23 @@ a.slot:hover { transform: scale(1.03); }
 .shop-amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ingredients input:checked + .shop-item .shop-name, .ingredients input:checked + .shop-item .shop-amt { text-decoration: line-through; color: var(--ink-3); }
 .shop-group .ingredients input:checked { background: var(--accent); border-color: var(--accent); }
-@media (max-width: 480px) {
+@media (max-width: 560px) {
   .tabbar a { padding: 10px 12px; gap: 6px; }
   .tabbar a:not([aria-current="page"]) span { display: none; }
 }
+
+/* ---------- Settings ---------- */
+.settings { display: grid; gap: 18px; max-width: 760px; }
+.settings h2 { font-size: 20px; margin-bottom: 14px; }
+.settings p { margin: 12px 0 0; font-size: 14px; }
+.choices { display: flex; flex-wrap: wrap; gap: 10px; }
+.choice {
+  padding: 12px 22px; border-radius: 16px; font-weight: 700; font-size: 17px;
+  background: var(--surface-2); border: 2px solid transparent; transition: background .2s, border-color .2s, transform .2s;
+}
+.choice:hover { transform: translateY(-2px); }
+.choice.active { background: color-mix(in srgb, var(--accent) 14%, var(--surface)); border-color: var(--accent); color: var(--accent); }
+:lang(hi) h1, :lang(mr) h1, :lang(hi) h2, :lang(mr) h2, :lang(hi) h3, :lang(mr) h3 { line-height: 1.35; letter-spacing: 0; }
+/* Letter-spacing and small caps break Devanagari conjuncts. */
+:lang(hi) .eyebrow, :lang(mr) .eyebrow, :lang(hi) .with, :lang(mr) .with, :lang(hi) .slot .label small, :lang(mr) .slot .label small,
+:lang(hi) .dish-tab small, :lang(mr) .dish-tab small, :lang(hi) .slot.empty, :lang(mr) .slot.empty { letter-spacing: 0; text-transform: none; }

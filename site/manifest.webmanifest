@@ -3,7 +3,7 @@
   "short_name": "Meal Master",
   "description": "Today's meals, recipes and the week ahead.",
   "id": "./",
-  "start_url": "./#/",
+  "start_url": "./#/day",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
@@ -17,7 +17,7 @@
     { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
   ],
   "shortcuts": [
-    { "name": "Today's meals", "short_name": "Today", "url": "./#/day", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Home", "short_name": "Home", "url": "./#/home", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
     { "name": "Grocery list", "short_name": "Shop", "url": "./#/shop", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
     { "name": "This week", "short_name": "Week", "url": "./#/week", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
   ]

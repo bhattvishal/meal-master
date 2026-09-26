@@ -89,31 +89,64 @@ function prop(page, name) {
   }
 }
 
-// Turns a recipe page body into { intro, sections: [{ title, kind: 'list'|'steps'|'text', items }] }.
+// A top-level heading with one of these names starts that language's copy of the recipe.
+const LANGUAGE_HEADINGS = { hi: /^(hindi|हिन्दी|हिंदी)$/i, mr: /^(marathi|मराठी)$/i };
+
+// Turns a recipe page body into { intro, sections: [{ title, kind: 'list'|'steps'|'text', items }], i18n }.
+// English comes first; "# हिन्दी" and "# मराठी" headings start the translated copies.
 function parseBody(blocks) {
-  const intro = [];
-  const sections = [];
+  const copies = { en: { intro: [], sections: [] } };
+  let lang = 'en';
   let current = null;
   const push = (kind, item) => {
     if (!item) return;
+    const copy = copies[lang];
     if (!current) {
-      if (kind === 'text') return intro.push(item);
+      if (kind === 'text') return copy.intro.push(item);
       current = { title: '', kind, items: [] };
-      sections.push(current);
+      copy.sections.push(current);
     }
     if (current.items.length === 0) current.kind = kind;
     current.items.push(item);
   };
   for (const b of blocks) {
     const data = b[b.type];
+    if (b.type === 'heading_1') {
+      const title = text(data.rich_text);
+      const marker = Object.keys(LANGUAGE_HEADINGS).find((l) => LANGUAGE_HEADINGS[l].test(title));
+      if (marker) {
+        lang = marker;
+        copies[lang] ??= { intro: [], sections: [] };
+        current = null;
+        continue;
+      }
+    }
     if (b.type.startsWith('heading_')) {
       current = { title: text(data.rich_text), kind: 'list', items: [] };
-      sections.push(current);
+      copies[lang].sections.push(current);
     } else if (b.type === 'bulleted_list_item' || b.type === 'to_do') push('list', text(data.rich_text));
     else if (b.type === 'numbered_list_item') push('steps', text(data.rich_text));
     else if (b.type === 'paragraph' || b.type === 'quote' || b.type === 'callout') push('text', text(data.rich_text));
   }
-  return { intro: intro.join('\n\n'), sections: sections.filter((s) => s.items.length) };
+  const tidy = (c) => ({ intro: c.intro.join('\n\n'), sections: c.sections.filter((s) => s.items.length) });
+  const { en, ...others } = copies;
+  return { ...tidy(en), i18n: Object.fromEntries(Object.entries(others).map(([l, c]) => [l, tidy(c)])) };
+}
+
+const LANGUAGE_NAMES = { hi: 'Hindi', mr: 'Marathi' };
+
+// Merges translated names and servings from properties into the parsed translated bodies.
+function dishTranslations(page, bodies) {
+  const out = {};
+  for (const [lang, label] of Object.entries(LANGUAGE_NAMES)) {
+    const entry = {
+      name: prop(page, `Name (${label})`),
+      serving: prop(page, `Serving (${label})`),
+      ...(bodies[lang] ?? {}),
+    };
+    if (entry.name || entry.serving || entry.intro || entry.sections?.length) out[lang] = entry;
+  }
+  return out;
 }
 
 const extFor = (contentType, url) => {
@@ -203,6 +236,7 @@ function expandSchedule(rows, combos, windowStart, windowEnd) {
       time: prop(p, 'Time'),
       notes: prop(p, 'Notes') || combo?.notes || null,
       combo: combo?.name ?? null,
+      comboI18n: combo?.i18n ?? null,
       main: main.length ? main : combo?.main ?? [],
       sides: sides.length ? sides : combo?.sides ?? [],
       draft: prop(p, 'Planned by') === 'Claude draft',
@@ -233,6 +267,7 @@ async function main() {
     for (const p of await queryAll(NOTION_COMBOS_DB)) {
       combos.set(p.id, {
         name: prop(p, 'Name'),
+        i18n: { hi: prop(p, 'Name (Hindi)'), mr: prop(p, 'Name (Marathi)') },
         meal: prop(p, 'Meal'),
         notes: prop(p, 'Notes'),
         main: prop(p, 'Main') ?? [],
@@ -271,7 +306,7 @@ async function main() {
   for (const page of dishPages.filter((p) => used.has(p.id))) {
     const name = prop(page, 'Name') || 'Untitled dish';
     console.log(`  ${name}`);
-    const body = parseBody(await blocksOf(page.id));
+    const { i18n: bodies, ...body } = parseBody(await blocksOf(page.id));
     dishes[page.id] = {
       id: page.id,
       name,
@@ -292,6 +327,7 @@ async function main() {
       tags: prop(page, 'Tags') ?? [],
       notionUrl: page.url,
       ...body,
+      i18n: dishTranslations(page, bodies),
     };
   }
 

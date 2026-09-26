@@ -4,12 +4,15 @@ Meal Master is a small web app for your meal plan. It shows today's breakfast, l
 
 ## Pages
 
+The app opens on **Today**. Home is one tap away in the tab bar.
+
 | Page | Address | What it shows |
 | --- | --- | --- |
-| Home | `#/` | An animated plate for today, with the protein total, what's next, and today's three meals |
-| Day | `#/day` or `#/day/2026-09-29` | Breakfast, lunch and dinner cards with a photo, sides and nutrients, plus day totals. Swipe or use the arrow keys to change day |
+| Home | `#/home` | An animated plate for today, with the protein total, what's next, and today's three meals |
+| Today / Day | `#/day` or `#/day/2026-09-29` | Breakfast, lunch and dinner cards with a photo, sides and nutrients, plus day totals. Swipe or use the arrow keys to change day |
 | Meal | `#/meal/2026-09-29/dinner` | A large photo, the nutrition breakdown, tabs for the main dish and each side, ingredients you can tick off, and numbered steps. It can keep the screen on while you cook |
 | Week | `#/week` | Monday to Sunday with every meal, and the week's protein and calorie totals |
+| Settings | `#/settings` | Language (English, हिन्दी, मराठी), number of people, light or dark look. Saved on each device |
 | Shop | `#/shop` or `#/shop/2026-09-28/7` | Grocery list for the next few days, scaled for your household, grouped by aisle, with tick-off boxes and a Share button |
 
 ## How it works
@@ -44,6 +47,8 @@ Both databases live under the **🥗 Meal Plan** page.
 | Prep time (min) | Number | |
 | Tags | Multi-select | High protein, Vegetarian, Make ahead, Office-friendly |
 | Nutrition source | Select | Estimated or Verified |
+| Name (Hindi), Name (Marathi) | Text | Dish name in Hindi and Marathi |
+| Serving (Hindi), Serving (Marathi) | Text | The serving text in Hindi and Marathi |
 
 **Meal Combos**: meals you repeat, saved once. For example, "Idli Sambar" is Idli plus Sambar and Coconut Chutney.
 
@@ -73,6 +78,8 @@ Both databases live under the **🥗 Meal Plan** page.
 A normal row always wins over a repeat on the same date and meal. So to change one day of a repeating lunch, add a normal row for that day. If two repeats overlap, the one that started later wins.
 
 The page emoji you give a dish is used as its icon until it has a photo.
+
+**Hindi and Marathi recipes**: after the English recipe, add a heading `# हिन्दी` and write the Hindi version under it, using the same layout (`##` section headings, bullet lists for ingredients, numbered lists for steps). Do the same under `# मराठी`. Keep amounts in 0–9 digits so they can scale. When a translation is missing, the app shows the English text. Meal Combos also have Name (Hindi) and Name (Marathi) columns.
 
 ## One-time setup
 
