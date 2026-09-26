@@ -1,0 +1,55 @@
+name: Sync from Notion and deploy
+
+on:
+  push:
+    branches: [master]
+  schedule:
+    # Every 3 hours. Note: GitHub pauses schedules after 60 days without repo activity.
+    - cron: '17 */3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Sync meals from Notion
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DISHES_DB: ${{ vars.NOTION_DISHES_DB }}
+          NOTION_SCHEDULE_DB: ${{ vars.NOTION_SCHEDULE_DB }}
+          NOTION_COMBOS_DB: ${{ vars.NOTION_COMBOS_DB }}
+        run: node scripts/sync-notion.mjs
+
+      - name: Stamp build version
+        run: sed -i "s/__BUILD__/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/" site/sw.js
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
