@@ -2,7 +2,7 @@ name: Sync from Notion and deploy
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   schedule:
     # Every 3 hours. Note: GitHub pauses schedules after 60 days without repo activity.
     - cron: '17 */3 * * *'

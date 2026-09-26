@@ -15,7 +15,7 @@ Meal Master is a small web app for your meal plan. It shows today's breakfast, l
 
 ```
 Notion (Dishes + Meal Schedule)
-        │   every 3 hours, on every push to main, or on demand
+        │   every 3 hours, on every push to master, or on demand
         ▼
 GitHub Action ── scripts/sync-notion.mjs ──► site/data/meals.json + site/images/
         │
@@ -66,7 +66,7 @@ The page emoji you give a dish is used as its icon until it has a photo.
    - Variable `NOTION_DISHES_DB`: `770bc04d890a41a589192a1f8129d0ef`
    - Variable `NOTION_SCHEDULE_DB`: `fdb3d2f43eee4a739ed7d8543a4bec9d`
 4. **Turn on Pages.** Go to **Settings → Pages → Source** and choose **GitHub Actions**.
-5. **Publish.** Merge to `main`, or run **Actions → Sync from Notion and deploy → Run workflow**. The site will be at `https://bhattvishal.github.io/meal-master/`.
+5. **Publish.** Merge to `master`, or run **Actions → Sync from Notion and deploy → Run workflow**. The site will be at `https://bhattvishal.github.io/meal-master/`.
 
 Until the secrets are set, the site uses the snapshot in `site/data/meals.json`.
 
