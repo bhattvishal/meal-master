@@ -135,7 +135,7 @@ function homePage() {
   const date = today();
   const todays = SLOTS.map((slot) => ({ slot, meal: mealFor(date, slot) }));
   const dishes = todays.flatMap((t) => dishesOf(t.meal));
-  const totals = sum(dishes);
+  const totals = sum(mealsOn(date).flatMap(dishesOf));
   const next = upNext();
   const planned = todays.filter((t) => t.meal);
 
@@ -198,7 +198,7 @@ function homePage() {
 }
 
 function dayPage(date) {
-  const dishes = SLOTS.flatMap((slot) => dishesOf(mealFor(date, slot)));
+  const dishes = mealsOn(date).flatMap(dishesOf);
   const extra = mealsOn(date).filter((m) => !SLOTS.includes(m.meal));
   const card = (slot, meal, i) => {
     const all = dishesOf(meal);
@@ -341,7 +341,7 @@ function weekPage(date) {
   const start = weekStart(date);
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
   const end = days[6];
-  const weekDishes = days.flatMap((d) => SLOTS.flatMap((s) => dishesOf(mealFor(d, s))));
+  const weekDishes = days.flatMap((d) => mealsOn(d).flatMap(dishesOf));
   const planned = days.reduce((a, d) => a + SLOTS.filter((s) => mealFor(d, s)).length, 0);
   const t = sum(weekDishes);
   const range = `${fmt(start, { day: 'numeric', month: 'short' })} – ${fmt(end, { day: 'numeric', month: 'short' })}`;
@@ -361,7 +361,7 @@ function weekPage(date) {
     </div>
     <div class="week">
       ${days.map((d, i) => {
-        const dayProtein = sum(SLOTS.flatMap((s) => dishesOf(mealFor(d, s)))).protein;
+        const dayProtein = sum(mealsOn(d).flatMap(dishesOf)).protein;
         return `<div class="day-row rise${d === today() ? ' today' : ''}" style="--i:${i + 3}">
           <a class="day-label" href="#/day/${d}"><span class="dow">${fmt(d, { weekday: 'short' })} ${fmt(d, { day: 'numeric' })}</span><span class="date">${dayProtein != null ? `${dayProtein} g protein` : d === today() ? 'Today' : ''}</span></a>
           <div class="slots">${SLOTS.map((slot) => {
