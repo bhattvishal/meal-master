@@ -1,22 +1,24 @@
 // Meal Master: a small hash-routed app over data/meals.json (written by scripts/sync-notion.mjs).
-//   #/                      home: animated overview of today
-//   #/day[/YYYY-MM-DD]      breakfast, lunch and dinner for a day
-//   #/meal/YYYY-MM-DD/slot  one meal with its dishes and recipes
-//   #/week[/YYYY-MM-DD]     the week (Mon-Sun) containing that date
-//   #/shop[/YYYY-MM-DD/N]   grocery list for N days from that date
+//   #/ or #/day[/YYYY-MM-DD] breakfast, lunch and dinner for a day (the app opens here)
+//   #/home                   animated overview of today
+//   #/meal/YYYY-MM-DD/slot   one meal with its dishes and recipes
+//   #/week[/YYYY-MM-DD]      the week (Mon-Sun) containing that date
+//   #/shop[/YYYY-MM-DD/N]    grocery list for N days from that date
+//   #/settings               language, household size and appearance
 
 import { getPeople, setPeople, factorFor, scaleLine, buildGroceries } from './kitchen.js';
+import { LANGS, getLang, setLang, locale, t, tag, unit, grocery, amount, dishText } from './i18n.js';
 
 const SLOTS = ['breakfast', 'lunch', 'dinner'];
-const SLOT_LABEL = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack' };
 const SLOT_TIME = { breakfast: '08:00', lunch: '13:00', dinner: '20:00', snack: '16:00' };
 const SLOT_EMOJI = { breakfast: '🥣', lunch: '🍱', dinner: '🍛', snack: '🥜' };
 const MACROS = [
-  { key: 'protein', label: 'Protein', unit: 'g', kcal: 4 },
-  { key: 'carbs', label: 'Carbs', unit: 'g', kcal: 4 },
-  { key: 'fat', label: 'Fat', unit: 'g', kcal: 9 },
-  { key: 'fibre', label: 'Fibre', unit: 'g', kcal: 0 },
+  { key: 'protein', kcal: 4 },
+  { key: 'carbs', kcal: 4 },
+  { key: 'fat', kcal: 9 },
+  { key: 'fibre', kcal: 0 },
 ];
+const REPEAT_KEY = { daily: 'rDaily', weekdays: 'rWeekdays', weekends: 'rWeekends', weekly: 'rWeekly' };
 
 const app = document.getElementById('app');
 let data = null;
@@ -31,15 +33,20 @@ const parse = (s) => { const [y, m, d] = s.split('-').map(Number); return new Da
 const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return iso(d); };
 const today = () => iso(new Date());
 const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s ?? '');
-const fmt = (s, opts) => parse(s).toLocaleDateString(undefined, opts);
+const fmt = (s, opts) => parse(s).toLocaleDateString(locale(), opts);
 const weekStart = (s) => { const d = parse(s); return addDays(s, -((d.getDay() + 6) % 7)); };
 const round = (n) => (n == null ? null : Math.round(n * 10) / 10);
+const slotName = (slot) => t(slot);
+const name = (dish) => dishText(dish, 'name');
+const peopleText = (n) => t(n === 1 ? 'person' : 'people', { n });
+const kcal = () => unit('kcal');
+const g = () => unit('g');
 
 function relDay(s) {
   const diff = Math.round((parse(s) - parse(today())) / 86400000);
-  if (diff === 0) return 'Today';
-  if (diff === 1) return 'Tomorrow';
-  if (diff === -1) return 'Yesterday';
+  if (diff === 0) return t('today');
+  if (diff === 1) return t('tomorrow');
+  if (diff === -1) return t('yesterday');
   return fmt(s, { weekday: 'long' });
 }
 
@@ -68,40 +75,38 @@ function sum(dishes) {
   }
   return out;
 }
-const show = (v, unit = '') => (v == null ? '—' : `${v}${unit}`);
-const REPEAT_LABEL = { daily: 'Every day', weekdays: 'Every weekday', weekends: 'Every weekend', weekly: 'Every week' };
+const show = (v, u = '') => (v == null ? '—' : `${v}${u}`);
+
 function badges(meal) {
   return [
-    meal.repeat ? `<span class="chip small">🔁 ${REPEAT_LABEL[meal.repeat] ?? 'Repeats'}</span>` : '',
-    meal.draft ? '<span class="chip small draft">✏️ Claude draft</span>' : '',
+    meal.repeat ? `<span class="chip small">🔁 ${t(REPEAT_KEY[meal.repeat] ?? 'rWeekly')}</span>` : '',
+    meal.draft ? `<span class="chip small draft">✏️ ${t('draft')}</span>` : '',
   ].join('');
 }
+const comboName = (meal) => meal.comboI18n?.[getLang()] || meal.combo;
+
 const peopleControl = (people) => `
-  <div class="people" role="group" aria-label="Number of people">
-    <button class="icon-btn small" data-people="-1" aria-label="Fewer people">−</button>
-    <span><b>${people}</b> ${people === 1 ? 'person' : 'people'}</span>
-    <button class="icon-btn small" data-people="1" aria-label="More people">+</button>
+  <div class="people" role="group">
+    <button class="icon-btn small" data-people="-1" aria-label="${t('fewer')}">−</button>
+    <span><b>${people}</b></span>
+    <button class="icon-btn small" data-people="1" aria-label="${t('more')}">+</button>
   </div>`;
 
 function mealTime(meal, slot) {
   return meal?.time || SLOT_TIME[slot];
 }
 
-// The next meal from now, looking up to two weeks ahead.
+// The next meal from now.
 function upNext() {
   const now = new Date();
-  const hhmm = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  const hhmm = `${pad(Math.max(0, now.getHours() - 1))}:${pad(now.getMinutes())}`;
   const sorted = [...data.meals].sort((a, b) => (a.date + mealTime(a, a.meal)).localeCompare(b.date + mealTime(b, b.meal)));
-  return sorted.find((m) => m.date > today() || (m.date === today() && mealTime(m, m.meal) >= subtractHour(hhmm))) ?? null;
-}
-function subtractHour(hhmm) {
-  const [h, m] = hhmm.split(':').map(Number);
-  return `${pad(Math.max(0, h - 1))}:${pad(m)}`;
+  return sorted.find((m) => m.date > today() || (m.date === today() && mealTime(m, m.meal) >= hhmm)) ?? null;
 }
 
 function greeting() {
   const h = new Date().getHours();
-  return h < 5 ? 'Late night' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  return t(h < 5 ? 'lateNight' : h < 12 ? 'goodMorning' : h < 17 ? 'goodAfternoon' : 'goodEvening');
 }
 
 // ---------- building blocks ----------
@@ -111,38 +116,39 @@ function photo(dish, slot, { credit = false, eager = false } = {}) {
     const c = credit && dish.photo.credit
       ? `<a class="credit" href="${esc(dish.photo.sourceUrl)}" target="_blank" rel="noopener">📷 ${esc(dish.photo.credit)}${dish.photo.license ? ` · ${esc(dish.photo.license)}` : ''}</a>`
       : '';
-    return `<div class="photo"><img src="${esc(dish.photo.src)}" alt="${esc(dish.name)}" loading="${eager ? 'eager' : 'lazy'}" decoding="async">${c}</div>`;
+    return `<div class="photo"><img src="${esc(dish.photo.src)}" alt="${esc(name(dish))}" loading="${eager ? 'eager' : 'lazy'}" decoding="async">${c}</div>`;
   }
   const emoji = dish?.emoji || SLOT_EMOJI[slot] || '🍽️';
-  return `<div class="photo placeholder" role="img" aria-label="${esc(dish?.name ?? 'No dish')}"><span class="emoji">${emoji}</span></div>`;
+  return `<div class="photo placeholder" role="img" aria-label="${esc(dish ? name(dish) : t('notPlanned'))}"><span class="emoji">${emoji}</span></div>`;
 }
 
 function macroBars(n) {
   const max = Math.max(1, ...MACROS.map((m) => n[m.key] ?? 0));
   return `<div class="macros">${MACROS.map((m, i) => `
     <div class="macro">
-      <span class="label">${m.label}</span>
+      <span class="label">${t(m.key)}</span>
       <span class="bar"><i style="--c:var(--${m.key});--w:${((n[m.key] ?? 0) / max) * 100}%;--i:${i}"></i></span>
-      <span class="val">${show(n[m.key], m.unit)}</span>
+      <span class="val">${show(n[m.key], ` ${g()}`)}</span>
     </div>`).join('')}</div>`;
 }
 
 function statTiles(n) {
   const tiles = [
-    { k: 'calories', label: 'Calories', unit: ' kcal', c: 'var(--ink-3)' },
-    ...MACROS.map((m) => ({ k: m.key, label: m.label, unit: ' g', c: `var(--${m.key})` })),
+    { k: 'calories', u: kcal(), c: 'var(--ink-3)' },
+    ...MACROS.map((m) => ({ k: m.key, u: g(), c: `var(--${m.key})` })),
   ];
-  return `<div class="totals">${tiles.map((t, i) => `
-    <div class="stat rise" style="--c:${t.c};--i:${i}"><b>${show(n[t.k])}${n[t.k] == null ? '' : `<small style="font-size:14px">${t.unit}</small>`}</b><span>${t.label}</span></div>`).join('')}</div>`;
+  return `<div class="totals">${tiles.map((tl, i) => `
+    <div class="stat rise" style="--c:${tl.c};--i:${i}"><b>${show(n[tl.k])}${n[tl.k] == null ? '' : `<small style="font-size:14px"> ${tl.u}</small>`}</b><span>${t(tl.k)}</span></div>`).join('')}</div>`;
 }
 
 const chevron = (dir) => `<svg viewBox="0 0 24 24"><path d="${dir === 'left' ? 'M15 5l-7 7 7 7' : 'M9 5l7 7-7 7'}"/></svg>`;
 
+const syncedAt = () => new Date(data.generatedAt).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' });
+
 function footer() {
-  const when = new Date(data.generatedAt);
-  const src = data.source === 'notion' ? 'Notion' : 'a saved snapshot';
-  const link = data.notionScheduleUrl ? ` · <a href="${esc(data.notionScheduleUrl)}" target="_blank" rel="noopener">Edit in Notion</a>` : '';
-  return `<p class="footer-note">Synced from ${src} ${when.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}${link}</p>`;
+  const src = data.source === 'notion' ? t('notion') : t('snapshot');
+  const link = data.notionScheduleUrl ? ` · <a href="${esc(data.notionScheduleUrl)}" target="_blank" rel="noopener">${t('editNotion')}</a>` : '';
+  return `<p class="footer-note">${esc(t('synced', { src, when: syncedAt() }))}${link}</p>`;
 }
 
 // ---------- pages ----------
@@ -150,42 +156,43 @@ function footer() {
 function homePage() {
   const date = today();
   const todays = SLOTS.map((slot) => ({ slot, meal: mealFor(date, slot) }));
-  const dishes = todays.flatMap((t) => dishesOf(t.meal));
+  const dishes = todays.flatMap((x) => dishesOf(x.meal));
   const totals = sum(mealsOn(date).flatMap(dishesOf));
   const next = upNext();
-  const planned = todays.filter((t) => t.meal);
+  const planned = todays.filter((x) => x.meal);
 
   // Ring: one arc per meal slot, coloured when that meal is planned.
   const C = 2 * Math.PI * 46;
   const arc = C / 3 - 8;
-  const segs = todays.map((t, i) => {
-    const cls = t.meal ? `seg meal-${t.slot}` : 'track';
-    return `<circle class="${cls}" cx="50" cy="50" r="46" style="--len:${arc};--i:${i};${t.meal ? '' : `stroke-dasharray:${arc} 999;`}stroke-dashoffset:${-(i * (arc + 8) + 4)}"/>`;
+  const segs = todays.map((x, i) => {
+    const cls = x.meal ? `seg meal-${x.slot}` : 'track';
+    return `<circle class="${cls}" cx="50" cy="50" r="46" style="--len:${arc};--i:${i};${x.meal ? '' : `stroke-dasharray:${arc} 999;`}stroke-dashoffset:${-(i * (arc + 8) + 4)}"/>`;
   }).join('');
 
   const orbitEmoji = (dishes.length ? dishes.map((d) => d.emoji || '🍽️') : ['🥗', '🍳', '🫓', '🥒', '🍢', '🥜']).slice(0, 8);
   const orbit = orbitEmoji.map((e, i) => `<div class="food" style="--a:${(360 / orbitEmoji.length) * i}deg;--i:${i}"><span>${e}</span></div>`).join('');
 
   const centre = totals.protein != null
-    ? `<div class="big" data-count="${totals.protein}">0</div><div class="unit">grams of protein today</div>`
-    : `<div class="big">${planned.length}</div><div class="unit">meals planned today</div>`;
+    ? `<div class="big" data-count="${totals.protein}">0</div><div class="unit">${t('proteinToday')}</div>`
+    : `<div class="big">${planned.length}</div><div class="unit">${t('mealsPlannedToday')}</div>`;
 
   const nextDish = next && mainDish(next);
   const lede = planned.length
-    ? `${planned.length} of 3 meals planned today${totals.calories != null ? `, about ${Math.round(totals.calories)} kcal` : ''}.`
+    ? `${t('ledePlanned', { n: planned.length })}${totals.calories != null ? t('ledeKcal', { kcal: Math.round(totals.calories) }) : ''}.`
     : next
-      ? `Nothing planned for today. Next up: ${SLOT_LABEL[next.meal].toLowerCase()} ${relDay(next.date).toLowerCase() === 'tomorrow' ? 'tomorrow' : `on ${relDay(next.date)}`}.`
-      : 'Nothing planned yet. Add meals to your Notion schedule and they will show up here.';
+      ? t('ledeNext', { meal: slotName(next.meal), day: relDay(next.date) })
+      : t('ledeEmpty');
+  const shownDate = planned.length || !next ? date : next.date;
 
   return `
     <section class="home-hero">
       <div>
         <div class="eyebrow rise" style="--i:0">${fmt(date, { weekday: 'long', day: 'numeric', month: 'long' })}</div>
-        <h1 class="rise" style="--i:1">${greeting()}.<br>${nextDish ? `Next up: <em>${esc(nextDish.name)}</em>` : 'Let’s eat well.'}</h1>
+        <h1 class="rise" style="--i:1">${greeting()}.<br>${nextDish ? `${t('nextUp')}: <em>${esc(name(nextDish))}</em>` : t('letsEat')}</h1>
         <p class="lede rise" style="--i:2">${esc(lede)}</p>
         <div class="actions rise" style="--i:3">
-          <a class="btn primary" href="#/day">Today’s meals</a>
-          <a class="btn" href="#/week">This week</a>
+          <a class="btn primary" href="#/day">${t('todaysMeals')}</a>
+          <a class="btn" href="#/week">${t('thisWeek')}</a>
         </div>
       </div>
       <div class="plate-wrap" aria-hidden="true">
@@ -196,17 +203,16 @@ function homePage() {
       </div>
     </section>
 
-    <div class="section-title"><h2>${planned.length ? 'Today' : next ? `Coming up · ${esc(relDay(next.date))}` : 'Today'}</h2><a class="muted" href="#/day/${planned.length || !next ? date : next.date}">See all →</a></div>
+    <div class="section-title"><h2>${planned.length || !next ? t('today') : esc(t('comingUp', { day: relDay(next.date) }))}</h2><a class="muted" href="#/day/${shownDate}">${t('seeAll')}</a></div>
     <div class="timeline">
       ${SLOTS.map((slot, i) => {
-        const d = planned.length || !next ? date : next.date;
-        const meal = mealFor(d, slot);
+        const meal = mealFor(shownDate, slot);
         const dish = mainDish(meal);
         const isNext = next && meal && meal.id === next.id;
-        return `<a class="tl-card meal-${slot} rise${meal ? '' : ' empty'}${isNext ? ' next' : ''}" style="--i:${i + 4}" href="${meal ? `#/meal/${d}/${slot}` : `#/day/${d}`}">
+        return `<a class="tl-card meal-${slot} rise${meal ? '' : ' empty'}${isNext ? ' next' : ''}" style="--i:${i + 4}" href="${meal ? `#/meal/${shownDate}/${slot}` : `#/day/${shownDate}`}">
           ${photo(dish, slot)}
-          <div><span class="pill"><span class="dot"></span>${SLOT_LABEL[slot]} · ${mealTime(meal, slot)}</span>
-          <div class="name" style="margin-top:8px">${dish ? esc(dish.name) : '<span class="muted">Not planned</span>'}</div></div>
+          <div><span class="pill"><span class="dot"></span>${slotName(slot)} · ${mealTime(meal, slot)}</span>
+          <div class="name" style="margin-top:8px">${dish ? esc(name(dish)) : `<span class="muted">${t('notPlanned')}</span>`}</div></div>
         </a>`;
       }).join('')}
     </div>
@@ -222,23 +228,23 @@ function dayPage(date) {
     if (!meal || !dish) {
       return `<div class="meal-card empty meal-${slot} rise" style="--i:${i + 2}">
         ${photo(null, slot)}
-        <div class="body"><span class="with">${SLOT_LABEL[slot]}</span><h3 class="muted">Nothing planned</h3>
-        ${data.notionScheduleUrl ? `<a class="cta" href="${esc(data.notionScheduleUrl)}" target="_blank" rel="noopener">Plan it in Notion <span>→</span></a>` : ''}</div>
+        <div class="body"><span class="with">${slotName(slot)}</span><h3 class="muted">${t('nothingPlanned')}</h3>
+        ${data.notionScheduleUrl ? `<a class="cta" href="${esc(data.notionScheduleUrl)}" target="_blank" rel="noopener">${t('planInNotion')} <span>→</span></a>` : ''}</div>
       </div>`;
     }
     const n = sum(all);
     const sides = all.slice(1);
     return `<a class="meal-card meal-${slot} rise" style="--i:${i + 2}" href="#/meal/${date}/${slot}">
       <div class="photo-frame" style="position:relative">${photo(dish, slot)}
-        <span class="pill" style="position:absolute;left:14px;top:14px"><span class="dot"></span>${SLOT_LABEL[slot]}</span>
+        <span class="pill" style="position:absolute;left:14px;top:14px"><span class="dot"></span>${slotName(slot)}</span>
         <span class="pill" style="position:absolute;right:14px;top:14px">🕒 ${mealTime(meal, slot)}</span>
       </div>
       <div class="body">
-        <h3>${esc(dish.name)}</h3>
+        <h3>${esc(name(dish))}</h3>
         ${meal.repeat || meal.draft ? `<div class="sides">${badges(meal)}</div>` : ''}
-        ${sides.length ? `<div class="sides"><span class="with">with</span>${sides.map((s) => `<span class="chip">${s.emoji ?? ''} ${esc(s.name)}</span>`).join('')}</div>` : ''}
+        ${sides.length ? `<div class="sides"><span class="with">${t('with')}</span>${sides.map((s) => `<span class="chip">${s.emoji ?? ''} ${esc(name(s))}</span>`).join('')}</div>` : ''}
         ${macroBars(n)}
-        <div class="cta"><span>${show(n.calories, ' kcal')}</span><span>View recipe →</span></div>
+        <div class="cta"><span>${show(n.calories, ` ${kcal()}`)}</span><span>${t('viewRecipe')}</span></div>
       </div>
     </a>`;
   };
@@ -247,17 +253,17 @@ function dayPage(date) {
     <header class="page-head rise">
       <div class="titles"><div class="eyebrow">${esc(relDay(date))}</div><h1>${fmt(date, { weekday: 'long', day: 'numeric', month: 'long' })}</h1></div>
       <div class="nav">
-        <a class="icon-btn" href="#/day/${addDays(date, -1)}" aria-label="Previous day">${chevron('left')}</a>
-        <a class="icon-btn" href="#/day/${addDays(date, 1)}" aria-label="Next day">${chevron('right')}</a>
+        <a class="icon-btn" href="#/day/${addDays(date, -1)}" aria-label="${t('prevDay')}">${chevron('left')}</a>
+        <a class="icon-btn" href="#/day/${addDays(date, 1)}" aria-label="${t('nextDay')}">${chevron('right')}</a>
       </div>
     </header>
     ${statTiles(sum(dishes))}
     <div class="meals">${SLOTS.map((slot, i) => card(slot, mealFor(date, slot), i)).join('')}</div>
-    ${extra.length ? `<div class="section-title"><h2>Also planned</h2></div><div class="timeline">${extra.map((m, i) => {
+    ${extra.length ? `<div class="section-title"><h2>${t('alsoPlanned')}</h2></div><div class="timeline">${extra.map((m, i) => {
       const d = mainDish(m);
-      return `<a class="tl-card meal-${m.meal} rise" style="--i:${i + 5}" href="#/meal/${date}/${m.meal}">${photo(d, m.meal)}<div><span class="pill"><span class="dot"></span>${SLOT_LABEL[m.meal] ?? m.meal}</span><div class="name" style="margin-top:8px">${esc(d?.name ?? m.name)}</div></div></a>`;
+      return `<a class="tl-card meal-${m.meal} rise" style="--i:${i + 5}" href="#/meal/${date}/${m.meal}">${photo(d, m.meal)}<div><span class="pill"><span class="dot"></span>${slotName(m.meal)}</span><div class="name" style="margin-top:8px">${esc(d ? name(d) : m.name)}</div></div></a>`;
     }).join('')}</div>` : ''}
-    ${date !== today() ? `<p style="text-align:center;margin-top:28px"><a class="btn" href="#/day">Jump to today</a></p>` : ''}
+    ${date !== today() ? `<p style="text-align:center;margin-top:28px"><a class="btn" href="#/day">${t('jumpToday')}</a></p>` : ''}
     ${footer()}`;
 }
 
@@ -265,25 +271,26 @@ function mealPage(date, slot, selectedId) {
   const meal = mealFor(date, slot);
   const dishes = dishesOf(meal);
   if (!meal || !dishes.length) {
-    return `<div class="error"><h1>No ${esc(SLOT_LABEL[slot]?.toLowerCase() ?? 'meal')} planned</h1><p class="muted">${fmt(date, { weekday: 'long', day: 'numeric', month: 'long' })}</p><a class="btn primary" href="#/day/${date}">Back to the day</a></div>`;
+    return `<div class="error"><h1>${esc(t('noMeal', { meal: slotName(slot) }))}</h1><p class="muted">${fmt(date, { weekday: 'long', day: 'numeric', month: 'long' })}</p><a class="btn primary" href="#/day/${date}">${t('backToDay')}</a></div>`;
   }
   const main = dishes[0];
   const dish = dishes.find((d) => d.id === selectedId) ?? main;
   const n = sum(dishes);
 
   // Calorie split by macro for the donut.
-  const kcal = MACROS.filter((m) => m.kcal).map((m) => ({ ...m, v: (n[m.key] ?? 0) * m.kcal }));
-  const kTotal = kcal.reduce((a, b) => a + b.v, 0) || 1;
+  const split = MACROS.filter((m) => m.kcal).map((m) => ({ ...m, v: (n[m.key] ?? 0) * m.kcal }));
+  const kTotal = split.reduce((a, b) => a + b.v, 0) || 1;
   const C = 2 * Math.PI * 40;
   let off = 0;
-  const donut = kcal.map((m, i) => {
+  const donut = split.map((m, i) => {
     const len = (m.v / kTotal) * C;
     const s = `<circle class="seg" cx="50" cy="50" r="40" style="--c:var(--${m.key});--len:${len};--i:${i};stroke-dashoffset:${-off}"/>`;
     off += len;
     return s;
   }).join('');
 
-  const sections = dish.sections ?? [];
+  const sections = dishText(dish, 'sections') ?? [];
+  const intro = dishText(dish, 'intro');
   const lists = sections.filter((s) => s.kind !== 'steps');
   const steps = sections.filter((s) => s.kind === 'steps');
   const checked = loadChecks(meal.id, dish.id);
@@ -291,67 +298,70 @@ function mealPage(date, slot, selectedId) {
   const factor = factorFor(dish, people);
   let idx = 0;
   const listHtml = lists.map((s) => `
-    <div><h3>${esc(s.title || 'Ingredients')}</h3>
-    ${s.kind === 'text' ? s.items.map((t) => `<p>${esc(t)}</p>`).join('') : `<ul class="ingredients">${s.items.map((it) => {
+    <div><h3>${esc(s.title || t('ingredients'))}</h3>
+    ${s.kind === 'text' ? s.items.map((x) => `<p>${esc(x)}</p>`).join('') : `<ul class="ingredients">${s.items.map((it) => {
       const k = idx++;
       return `<li><label><input type="checkbox" data-check="${k}" ${checked.includes(k) ? 'checked' : ''}><span>${esc(scaleLine(it, factor))}</span></label></li>`;
     }).join('')}</ul>`}</div>`).join('');
-  const stepHtml = steps.map((s) => `<div><h3>${esc(s.title || 'Method')}</h3><ol class="steps">${s.items.map((it) => `<li><span>${esc(it)}</span></li>`).join('')}</ol></div>`).join('');
+  const stepHtml = steps.map((s) => `<div><h3>${esc(s.title || t('method'))}</h3><ol class="steps">${s.items.map((it) => `<li><span>${esc(it)}</span></li>`).join('')}</ol></div>`).join('');
+  const scaleNote = dish.serves
+    ? (factor === 1 ? t('amountsWritten') : t('amountsScaled', { from: dish.serves, to: people }))
+    : t('amountsNoServes');
 
   return `
     <section class="hero meal-${slot}">
       ${photo(main, slot, { credit: true, eager: true })}
       <div class="top">
-        <a class="icon-btn" href="#/day/${date}" aria-label="Back to ${esc(fmt(date, { weekday: 'long' }))}">${chevron('left')}</a>
-        <span class="pill meal-${slot}"><span class="dot"></span>${SLOT_LABEL[slot]} · ${mealTime(meal, slot)}</span>
+        <a class="icon-btn" href="#/day/${date}" aria-label="${esc(t('backToDay'))}">${chevron('left')}</a>
+        <span class="pill meal-${slot}"><span class="dot"></span>${slotName(slot)} · ${mealTime(meal, slot)}</span>
       </div>
       <div class="caption">
         <div class="eyebrow" style="color:rgba(255,255,255,.8)">${esc(relDay(date))} · ${fmt(date, { day: 'numeric', month: 'long' })}</div>
-        <h1>${esc(main.name)}</h1>
-        ${dishes.length > 1 ? `<div class="sub">with ${dishes.slice(1).map((d) => esc(d.name)).join(' & ')}</div>` : ''}
+        <h1>${esc(name(main))}</h1>
+        ${dishes.length > 1 ? `<div class="sub">${t('with')} ${dishes.slice(1).map((d) => esc(name(d))).join(' & ')}</div>` : ''}
       </div>
     </section>
 
     <div class="detail meal-${slot}">
       <aside style="display:grid;gap:16px">
         <div class="panel rise" style="--i:1">
-          <h2>This meal</h2>
+          <h2>${t('thisMeal')}</h2>
           <div class="donut-wrap">
             <div class="donut"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" stroke="var(--surface-2)"/>${donut}</svg>
-              <div class="center"><b>${show(n.calories == null ? null : Math.round(n.calories))}</b><span>kcal</span></div></div>
-            <div class="legend">${MACROS.map((m) => `<div><i style="--c:var(--${m.key})"></i>${m.label}<b>${show(n[m.key], ' g')}</b></div>`).join('')}</div>
+              <div class="center"><b>${show(n.calories == null ? null : Math.round(n.calories))}</b><span>${kcal()}</span></div></div>
+            <div class="legend">${MACROS.map((m) => `<div><i style="--c:var(--${m.key})"></i>${t(m.key)}<b>${show(n[m.key], ` ${g()}`)}</b></div>`).join('')}</div>
           </div>
-          <p class="muted" style="font-size:13px;margin:14px 0 0">Per person${dishes.some((d) => d.nutritionSource === 'Estimated') ? '. Some values are estimates' : ''}.</p>
+          <p class="muted" style="font-size:13px;margin:14px 0 0">${t('perPerson')}${dishes.some((d) => d.nutritionSource === 'Estimated') ? ` · ${t('someEstimates')}` : ''}</p>
         </div>
-        ${meal.repeat || meal.draft || meal.combo ? `<div class="meta rise" style="--i:2">${meal.combo ? `<span class="chip small">🍱 ${esc(meal.combo)}</span>` : ''}${badges(meal)}</div>` : ''}
+        ${meal.repeat || meal.draft || meal.combo ? `<div class="meta rise" style="--i:2">${meal.combo ? `<span class="chip small">🍱 ${esc(comboName(meal))}</span>` : ''}${badges(meal)}</div>` : ''}
         ${meal.notes ? `<div class="note rise" style="--i:2">📝 ${esc(meal.notes)}</div>` : ''}
-        ${'wakeLock' in navigator ? `<div class="panel rise toggle" style="--i:3"><span>🍳 Keep screen on while cooking</span><button class="switch" role="switch" aria-checked="${wakeLock ? 'true' : 'false'}" data-wake aria-label="Keep screen on"></button></div>` : ''}
+        ${'wakeLock' in navigator ? `<div class="panel rise toggle" style="--i:3"><span>🍳 ${t('keepScreen')}</span><button class="switch" role="switch" aria-checked="${wakeLock ? 'true' : 'false'}" data-wake aria-label="${t('keepScreen')}"></button></div>` : ''}
       </aside>
 
       <div style="display:grid;gap:18px;min-width:0">
         ${dishes.length > 1 ? `<div class="dish-tabs" role="tablist">${dishes.map((d) => `
           <button class="dish-tab" role="tab" aria-selected="${d.id === dish.id}" data-dish="${d.id}">
-            ${photo(d, slot)}<span><small>${d.role === 'main' ? 'Main' : 'Side'}</small>${esc(d.name)}</span>
+            ${photo(d, slot)}<span><small>${t(d.role === 'main' ? 'main' : 'side')}</small>${esc(name(d))}</span>
           </button>`).join('')}</div>` : ''}
 
         <article class="panel dish rise" style="--i:2" data-meal="${meal.id}" data-dishid="${dish.id}">
           <div class="dish-head">
             ${photo(dish, slot, { credit: dish.id !== main.id })}
             <div>
-              <h2>${esc(dish.name)}</h2>
+              <h2>${esc(name(dish))}</h2>
               <div class="meta">
-                ${dish.prepTime ? `<span class="chip">⏱ ${dish.prepTime} min</span>` : ''}
-                ${dish.serving ? `<span class="chip">🍽 ${esc(dish.serving)}</span>` : ''}
-                ${dish.nutrition?.protein != null ? `<span class="chip">💪 ${dish.nutrition.protein} g protein</span>` : ''}
-                ${dish.nutrition?.calories != null ? `<span class="chip">🔥 ${dish.nutrition.calories} kcal</span>` : ''}
-                ${(dish.tags ?? []).map((t) => `<span class="chip">${esc(t)}</span>`).join('')}
+                ${dish.prepTime ? `<span class="chip">⏱ ${dish.prepTime} ${t('min')}</span>` : ''}
+                ${dishText(dish, 'serving') ? `<span class="chip">🍽 ${esc(dishText(dish, 'serving'))}</span>` : ''}
+                ${dish.nutrition?.protein != null ? `<span class="chip">💪 ${dish.nutrition.protein} ${t('gProtein')}</span>` : ''}
+                ${dish.nutrition?.calories != null ? `<span class="chip">🔥 ${dish.nutrition.calories} ${kcal()}</span>` : ''}
+                ${(dish.tags ?? []).map((x) => `<span class="chip">${esc(tag(x))}</span>`).join('')}
               </div>
-              ${dish.intro ? `<p class="muted" style="margin:12px 0 0">${esc(dish.intro)}</p>` : ''}
+              ${intro ? `<p class="muted" style="margin:12px 0 0">${esc(intro)}</p>` : ''}
             </div>
           </div>
-          <div class="scale-row">${peopleControl(people)}<span class="muted">${dish.serves ? (factor === 1 ? 'Amounts as written' : `Amounts scaled from ${dish.serves} to ${people}`) : 'Amounts as written (no serving count in Notion)'}</span></div>
-          ${sections.length ? `<div class="recipe ${lists.length && steps.length ? 'two' : ''}">${listHtml ? `<div class="recipe-col">${listHtml}</div>` : ''}${stepHtml ? `<div class="recipe-col">${stepHtml}</div>` : ''}</div>` : '<p class="muted">No recipe written yet.</p>'}
-          ${dish.notionUrl ? `<p style="margin:0"><a class="muted" style="text-decoration:underline" href="${esc(dish.notionUrl)}" target="_blank" rel="noopener">Open in Notion</a></p>` : ''}
+          <div class="scale-row">${peopleControl(people)}<span class="muted">${esc(peopleText(people))} · ${esc(scaleNote)}</span></div>
+          ${sections.length ? `<div class="recipe ${lists.length && steps.length ? 'two' : ''}">${listHtml ? `<div class="recipe-col">${listHtml}</div>` : ''}${stepHtml ? `<div class="recipe-col">${stepHtml}</div>` : ''}</div>` : `<p class="muted">${t('noRecipe')}</p>`}
+          ${dish.notionUrl ? `<p style="margin:0"><a class="muted" style="text-decoration:underline" href="${esc(dish.notionUrl)}" target="_blank" rel="noopener">${t('openNotion')}</a></p>` : ''}
         </article>
       </div>
     </div>
@@ -364,32 +374,32 @@ function weekPage(date) {
   const end = days[6];
   const weekDishes = days.flatMap((d) => mealsOn(d).flatMap(dishesOf));
   const planned = days.reduce((a, d) => a + SLOTS.filter((s) => mealFor(d, s)).length, 0);
-  const t = sum(weekDishes);
+  const tot = sum(weekDishes);
   const range = `${fmt(start, { day: 'numeric', month: 'short' })} – ${fmt(end, { day: 'numeric', month: 'short' })}`;
 
   return `
     <header class="page-head rise">
-      <div class="titles"><div class="eyebrow">${start <= today() && today() <= end ? 'This week' : 'Week of'}</div><h1>${range}</h1></div>
+      <div class="titles"><div class="eyebrow">${start <= today() && today() <= end ? t('thisWeek') : t('weekOf')}</div><h1>${range}</h1></div>
       <div class="nav">
-        <a class="icon-btn" href="#/week/${addDays(start, -7)}" aria-label="Previous week">${chevron('left')}</a>
-        <a class="icon-btn" href="#/week/${addDays(start, 7)}" aria-label="Next week">${chevron('right')}</a>
+        <a class="icon-btn" href="#/week/${addDays(start, -7)}" aria-label="${t('prevWeek')}">${chevron('left')}</a>
+        <a class="icon-btn" href="#/week/${addDays(start, 7)}" aria-label="${t('nextWeek')}">${chevron('right')}</a>
       </div>
     </header>
     <div class="totals">
-      <div class="stat rise" style="--i:0;--c:var(--accent)"><b>${planned}<small style="font-size:14px"> / 21</small></b><span>Meals planned</span></div>
-      <div class="stat rise" style="--i:1;--c:var(--protein)"><b>${show(t.protein)}<small style="font-size:14px">${t.protein == null ? '' : ' g'}</small></b><span>Protein this week</span></div>
-      <div class="stat rise" style="--i:2;--c:var(--ink-3)"><b>${show(t.calories == null ? null : Math.round(t.calories))}<small style="font-size:14px">${t.calories == null ? '' : ' kcal'}</small></b><span>Calories this week</span></div>
+      <div class="stat rise" style="--i:0;--c:var(--accent)"><b>${planned}<small style="font-size:14px"> / 21</small></b><span>${t('mealsPlanned')}</span></div>
+      <div class="stat rise" style="--i:1;--c:var(--protein)"><b>${show(tot.protein)}<small style="font-size:14px">${tot.protein == null ? '' : ` ${g()}`}</small></b><span>${t('proteinWeek')}</span></div>
+      <div class="stat rise" style="--i:2;--c:var(--ink-3)"><b>${show(tot.calories == null ? null : Math.round(tot.calories))}<small style="font-size:14px">${tot.calories == null ? '' : ` ${kcal()}`}</small></b><span>${t('caloriesWeek')}</span></div>
     </div>
     <div class="week">
       ${days.map((d, i) => {
         const dayProtein = sum(mealsOn(d).flatMap(dishesOf)).protein;
         return `<div class="day-row rise${d === today() ? ' today' : ''}" style="--i:${i + 3}">
-          <a class="day-label" href="#/day/${d}"><span class="dow">${fmt(d, { weekday: 'short' })} ${fmt(d, { day: 'numeric' })}</span><span class="date">${dayProtein != null ? `${dayProtein} g protein` : d === today() ? 'Today' : ''}</span></a>
+          <a class="day-label" href="#/day/${d}"><span class="dow">${fmt(d, { weekday: 'short' })} ${fmt(d, { day: 'numeric' })}</span><span class="date">${dayProtein != null ? t('gProteinDay', { n: dayProtein }) : d === today() ? t('today') : ''}</span></a>
           <div class="slots">${SLOTS.map((slot) => {
             const meal = mealFor(d, slot);
             const dish = mainDish(meal);
-            if (!dish) return `<a class="slot empty meal-${slot}" href="#/day/${d}" aria-label="${SLOT_LABEL[slot]}, not planned">${SLOT_LABEL[slot]}</a>`;
-            return `<a class="slot meal-${slot}" href="#/meal/${d}/${slot}">${photo(dish, slot)}<span class="label"><small>${SLOT_LABEL[slot]}</small>${esc(dish.name)}</span></a>`;
+            if (!dish) return `<a class="slot empty meal-${slot}" href="#/day/${d}" aria-label="${slotName(slot)}, ${t('notPlanned')}">${slotName(slot)}</a>`;
+            return `<a class="slot meal-${slot}" href="#/meal/${d}/${slot}">${photo(dish, slot)}<span class="label"><small>${slotName(slot)}</small>${esc(name(dish))}</span></a>`;
           }).join('')}</div>
         </div>`;
       }).join('')}
@@ -404,59 +414,96 @@ function shopPage(from, days) {
   const groups = buildGroceries(meals, data.dishes, people);
   const listKey = `shop:${from}:${days}`;
   const ticked = new Set(loadList(listKey));
-  const total = groups.reduce((a, g) => a + g.items.length, 0);
-  const done = groups.reduce((a, g) => a + g.items.filter((i) => ticked.has(i.key)).length, 0);
+  const total = groups.reduce((a, gr) => a + gr.items.length, 0);
+  const done = groups.reduce((a, gr) => a + gr.items.filter((i) => ticked.has(i.key)).length, 0);
   const mon = weekStart(today());
   const ranges = [
-    ['Next 3 days', today(), 3],
-    ['Next 7 days', today(), 7],
-    ['This week', mon, 7],
-    ['Next week', addDays(mon, 7), 7],
+    ['next3', today(), 3],
+    ['next7', today(), 7],
+    ['thisWeek', mon, 7],
+    ['nextWeekChip', addDays(mon, 7), 7],
   ];
   const range = `${fmt(from, { weekday: 'short', day: 'numeric', month: 'short' })} – ${fmt(to, { weekday: 'short', day: 'numeric', month: 'short' })}`;
-  const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
   return `
     <header class="page-head rise">
-      <div class="titles"><div class="eyebrow">Grocery list</div><h1>${range}</h1></div>
+      <div class="titles"><div class="eyebrow">${t('groceryList')}</div><h1>${range}</h1></div>
       <div class="nav">
-        <a class="icon-btn" href="#/shop/${addDays(from, -days)}/${days}" aria-label="Earlier">${chevron('left')}</a>
-        <a class="icon-btn" href="#/shop/${addDays(from, days)}/${days}" aria-label="Later">${chevron('right')}</a>
+        <a class="icon-btn" href="#/shop/${addDays(from, -days)}/${days}" aria-label="${t('earlier')}">${chevron('left')}</a>
+        <a class="icon-btn" href="#/shop/${addDays(from, days)}/${days}" aria-label="${t('later')}">${chevron('right')}</a>
       </div>
     </header>
     <div class="shop-bar rise" style="--i:1">
-      <div class="range-chips">${ranges.map(([label, f, n]) => `<a class="chip${f === from && n === days ? ' active' : ''}" href="#/shop/${f}/${n}">${label}</a>`).join('')}</div>
-      ${peopleControl(people)}
+      <div class="range-chips">${ranges.map(([key, f, n]) => `<a class="chip${f === from && n === days ? ' active' : ''}" href="#/shop/${f}/${n}">${t(key)}</a>`).join('')}</div>
+      <div class="scale-row">${peopleControl(people)}<span class="muted">${esc(peopleText(people))}</span></div>
     </div>
     <div class="shop-summary rise" style="--i:2">
-      <span><b>${meals.length}</b> meals · <b>${total}</b> items${total ? ` · <b data-done>${done}</b> in the basket` : ''}</span>
+      <span><b>${meals.length}</b> ${t('meals')} · <b>${total}</b> ${t('items')}${total ? ` · <b data-done>${done}</b> ${t('inBasket')}` : ''}</span>
       <span class="actions">
-        ${total ? '<button class="btn" data-share>Share list</button><button class="btn" data-clear>Clear ticks</button>' : ''}
+        ${total ? `<button class="btn" data-share>${t('share')}</button><button class="btn" data-clear>${t('clear')}</button>` : ''}
       </span>
     </div>
-    ${total ? `<div class="shop-grid" data-list="${listKey}">${groups.map((g, gi) => `
+    ${total ? `<div class="shop-grid" data-list="${listKey}">${groups.map((gr, gi) => `
       <section class="panel shop-group rise" style="--i:${gi + 3}">
-        <h2>${esc(g.category)}</h2>
-        <ul class="ingredients">${g.items.map((it) => `
+        <h2>${esc(t(gr.category))}</h2>
+        <ul class="ingredients">${gr.items.map((it) => `
           <li><label><input type="checkbox" data-shop="${esc(it.key)}" ${ticked.has(it.key) ? 'checked' : ''}>
-            <span class="shop-item"><span class="shop-name">${esc(cap(it.name))}</span>${it.amount ? `<b class="shop-amt">${esc(it.amount)}</b>` : ''}
-            <small class="muted">${esc(it.dishes.join(', '))}</small></span></label></li>`).join('')}
+            <span class="shop-item"><span class="shop-name">${esc(cap(grocery(it.name)))}</span>${it.amount ? `<b class="shop-amt">${esc(amount(it.amount))}</b>` : ''}
+            <small class="muted">${esc(it.dishes.map((id) => name(data.dishes[id])).join(', '))}</small></span></label></li>`).join('')}
         </ul>
       </section>`).join('')}</div>`
-      : '<div class="panel" style="text-align:center"><p class="muted">No meals planned in these days.</p></div>'}
-    <p class="footer-note">Amounts are for ${people} ${people === 1 ? 'person' : 'people'}. Recipes without a serving count in Notion are listed without amounts.</p>
+      : `<div class="panel" style="text-align:center"><p class="muted">${t('noMealsDays')}</p></div>`}
+    <p class="footer-note">${esc(t('amountsFor', { people: peopleText(people) }))}</p>
     ${footer()}`;
 }
 
+function settingsPage() {
+  const lang = getLang();
+  const theme = getTheme();
+  const option = (attr, value, current, label) =>
+    `<button class="choice${value === current ? ' active' : ''}" ${attr}="${value}" aria-pressed="${value === current}">${label}</button>`;
+  return `
+    <header class="page-head rise"><div class="titles"><div class="eyebrow">Meal Master</div><h1>${t('settings')}</h1></div></header>
+    <div class="settings">
+      <section class="panel rise" style="--i:1">
+        <h2>🌐 ${t('language')}</h2>
+        <div class="choices">${Object.entries(LANGS).map(([code, l]) => option('data-lang', code, lang, `<span lang="${code}">${l.label}</span>`)).join('')}</div>
+        <p class="muted">${t('languageHelp')}</p>
+      </section>
+      <section class="panel rise" style="--i:2">
+        <h2>👪 ${t('household')}</h2>
+        <div class="scale-row">${peopleControl(getPeople())}<span class="muted">${esc(peopleText(getPeople()))}</span></div>
+        <p class="muted">${t('householdHelp')}</p>
+      </section>
+      <section class="panel rise" style="--i:3">
+        <h2>🎨 ${t('appearance')}</h2>
+        <div class="choices">${option('data-theme-choice', 'auto', theme, t('system'))}${option('data-theme-choice', 'light', theme, `☀️ ${t('light')}`)}${option('data-theme-choice', 'dark', theme, `🌙 ${t('dark')}`)}</div>
+      </section>
+      <section class="panel rise" style="--i:4">
+        <h2>💬 ${t('whatsapp')}</h2>
+        <p class="muted" style="margin-top:0">${t('whatsappHelp')}</p>
+        ${data.notionWhatsappUrl ? `<p><a class="btn" href="${esc(data.notionWhatsappUrl)}" target="_blank" rel="noopener">${t('whatsappEdit')}</a></p>` : ''}
+      </section>
+      <section class="panel rise" style="--i:5">
+        <h2>🗂 ${t('dataTitle')}</h2>
+        <p class="muted" style="margin-top:0">${t('lastSynced')}: ${esc(syncedAt())}</p>
+        ${data.notionScheduleUrl ? `<a class="btn" href="${esc(data.notionScheduleUrl)}" target="_blank" rel="noopener">${t('editNotion')}</a>` : ''}
+      </section>
+    </div>`;
+}
+
 function shopText() {
-  const lines = [...app.querySelectorAll('.shop-group')].map((g) => {
-    const items = [...g.querySelectorAll('li')]
+  const lines = [...app.querySelectorAll('.shop-group')].map((gr) => {
+    const items = [...gr.querySelectorAll('li')]
       .filter((li) => !li.querySelector('input').checked)
       .map((li) => `• ${li.querySelector('.shop-name').textContent}${li.querySelector('.shop-amt') ? ` — ${li.querySelector('.shop-amt').textContent}` : ''}`);
-    return items.length ? `${g.querySelector('h2').textContent}\n${items.join('\n')}` : '';
+    return items.length ? `${gr.querySelector('h2').textContent}\n${items.join('\n')}` : '';
   }).filter(Boolean);
-  return `${app.querySelector('h1').textContent}\n\n${lines.join('\n\n')}`;
+  return `${t('groceryList')}: ${app.querySelector('h1').textContent}\n\n${lines.join('\n\n')}`;
 }
+
+// ---------- per-device storage ----------
 
 function loadList(key) {
   try { return JSON.parse(localStorage.getItem(key) ?? '[]'); } catch { return []; }
@@ -464,14 +511,21 @@ function loadList(key) {
 function saveList(key, list) {
   try { localStorage.setItem(key, JSON.stringify(list)); } catch { /* storage unavailable */ }
 }
+const loadChecks = (mealId, dishId) => loadList(`checks:${mealId}:${dishId}`);
+const saveChecks = (mealId, dishId, list) => saveList(`checks:${mealId}:${dishId}`, list);
 
-// ---------- ingredient checkboxes (per viewer, remembered on this device) ----------
-
-function loadChecks(mealId, dishId) {
-  try { return JSON.parse(localStorage.getItem(`checks:${mealId}:${dishId}`) ?? '[]'); } catch { return []; }
+function getTheme() {
+  try { return localStorage.getItem('theme') || 'auto'; } catch { return 'auto'; }
 }
-function saveChecks(mealId, dishId, list) {
-  try { localStorage.setItem(`checks:${mealId}:${dishId}`, JSON.stringify(list)); } catch { /* storage unavailable */ }
+function applyTheme(theme) {
+  if (theme === 'auto') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = theme;
+}
+
+// Labels outside #app (tab bar, page language) follow the chosen language.
+function applyLanguage() {
+  document.documentElement.lang = getLang();
+  document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
 }
 
 // ---------- router ----------
@@ -479,15 +533,16 @@ function saveChecks(mealId, dishId, list) {
 function route() {
   const [page, a, b] = location.hash.replace(/^#\/?/, '').split('/');
   switch (page) {
-    case 'day': return { tab: 'day', render: () => dayPage(isDate(a) ? a : today()), swipe: (dir) => `#/day/${addDays(isDate(a) ? a : today(), dir)}` };
+    case 'home': return { tab: 'home', render: homePage };
     case 'week': return { tab: 'week', render: () => weekPage(isDate(a) ? a : today()), swipe: (dir) => `#/week/${addDays(weekStart(isDate(a) ? a : today()), dir * 7)}` };
     case 'shop': {
       const from = isDate(a) ? a : today();
       const days = Math.min(14, Math.max(1, Number(b) || 7));
       return { tab: 'shop', render: () => shopPage(from, days), swipe: (dir) => `#/shop/${addDays(from, dir * days)}/${days}` };
     }
+    case 'settings': return { tab: 'settings', render: settingsPage };
     case 'meal': return { tab: 'day', render: () => mealPage(isDate(a) ? a : today(), b || 'dinner') };
-    default: return { tab: 'home', render: homePage };
+    default: return { tab: 'day', render: () => dayPage(isDate(a) ? a : today()), swipe: (dir) => `#/day/${addDays(isDate(a) ? a : today(), dir)}` };
   }
 }
 
@@ -507,13 +562,22 @@ function render() {
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
 
+// Re-renders in place, keeping the scroll position and the selected dish tab.
+function rerender() {
+  const y = window.scrollY;
+  const selected = app.querySelector('[data-dishid]')?.dataset.dishid;
+  const [page, date, slot] = location.hash.replace(/^#\/?/, '').split('/');
+  app.innerHTML = page === 'meal' ? mealPage(date, slot, selected) : current.render();
+  window.scrollTo({ top: y, behavior: 'instant' });
+}
+
 function countUp() {
   app.querySelectorAll('[data-count]').forEach((el) => {
     const target = Number(el.dataset.count);
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) { el.textContent = target; return; }
     const t0 = performance.now() + 500;
-    const step = (t) => {
-      const p = Math.min(1, Math.max(0, (t - t0) / 1400));
+    const step = (now) => {
+      const p = Math.min(1, Math.max(0, (now - t0) / 1400));
       el.textContent = Math.round(target * (1 - Math.pow(1 - p, 3)));
       if (p < 1) requestAnimationFrame(step);
     };
@@ -535,24 +599,35 @@ app.addEventListener('click', async (e) => {
   const people = e.target.closest('[data-people]');
   if (people) {
     setPeople(getPeople() + Number(people.dataset.people));
-    const y = window.scrollY;
-    const selected = app.querySelector('[data-dishid]')?.dataset.dishid;
-    const [page, date, slot] = location.hash.replace(/^#\/?/, '').split('/');
-    app.innerHTML = page === 'meal' ? mealPage(date, slot, selected) : current.render();
-    window.scrollTo({ top: y, behavior: 'instant' });
+    rerender();
+    return;
+  }
+  const langBtn = e.target.closest('[data-lang]');
+  if (langBtn) {
+    setLang(langBtn.dataset.lang);
+    applyLanguage();
+    rerender();
+    return;
+  }
+  const themeBtn = e.target.closest('[data-theme-choice]');
+  if (themeBtn) {
+    const theme = themeBtn.dataset.themeChoice;
+    try { localStorage.setItem('theme', theme); } catch { /* storage unavailable */ }
+    applyTheme(theme);
+    rerender();
     return;
   }
   if (e.target.closest('[data-share]')) {
     const text = shopText();
     try {
-      if (navigator.share) await navigator.share({ title: 'Grocery list', text });
-      else { await navigator.clipboard.writeText(text); e.target.textContent = 'Copied!'; }
+      if (navigator.share) await navigator.share({ title: t('groceryList'), text });
+      else { await navigator.clipboard.writeText(text); e.target.textContent = t('copied'); }
     } catch { /* share cancelled */ }
     return;
   }
   if (e.target.closest('[data-clear]')) {
     saveList(app.querySelector('[data-list]').dataset.list, []);
-    app.innerHTML = current.render();
+    rerender();
     return;
   }
   const wake = e.target.closest('[data-wake]');
@@ -606,13 +681,15 @@ document.addEventListener('visibilitychange', () => {
 
 async function load() {
   const res = await fetch('data/meals.json', { cache: 'no-cache' });
-  if (!res.ok) throw new Error(`Could not load meals (${res.status})`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
   data = await res.json();
 }
 
+applyTheme(getTheme());
+applyLanguage();
 addEventListener('hashchange', render);
 load().then(render).catch((err) => {
-  app.innerHTML = `<div class="error"><h1>Couldn’t load your meals</h1><p class="muted">${esc(err.message)}</p><button class="btn primary" onclick="location.reload()">Try again</button></div>`;
+  app.innerHTML = `<div class="error"><h1>${t('couldntLoad')}</h1><p class="muted">${esc(err.message)}</p><button class="btn primary" onclick="location.reload()">${t('tryAgain')}</button></div>`;
 });
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {

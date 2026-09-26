@@ -21,6 +21,8 @@ export const factorFor = (dish, people) => (dish.serves ? people / dish.serves :
 const UNITS = {
   g: 'g', gm: 'g', gram: 'g', grams: 'g', kg: 'kg', ml: 'ml', l: 'l', litre: 'l', liter: 'l',
   cup: 'cup', cups: 'cup', tbsp: 'tbsp', tsp: 'tsp', inch: 'inch', clove: 'clove', cloves: 'clove',
+  // Hindi and Marathi recipe text uses these; spoons are two words and are left as written.
+  'ग्राम': 'g', 'ग्रॅम': 'g', 'किलो': 'kg', 'कप': 'cup', 'इंच': 'inch',
 };
 const NUM = String.raw`(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?)`;
 const LEAD = new RegExp(String.raw`^\s*${NUM}(?:\s*[–-]\s*${NUM})?\s*(.*)$`);
@@ -94,7 +96,7 @@ function itemName(item) {
     .replace(/^(a |an )?(handful|pinch|sprig|few|splash|squeeze|small piece|piece|bunch|dash) of /, '')
     .replace(/^(a few|some|few) /, '')
     .split(' or ')[0]
-    .replace(/ (to taste|to finish|to serve|to garnish|for .*|as needed|per .*)$/, '')
+    .replace(/ (to taste|to finish|to serve|to garnish|to grease .*|for .*|as needed|per .*)$/, '')
     .replace(/\b(large|medium|small|big|fresh|thick|very|finely|roughly|thinly|chopped|sliced|grated|crumbled|cubed|whisked|soaked|boiled|mashed|cooked|dried|roasted|optional)\b/g, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -115,7 +117,7 @@ const roundCount = (q) => (q >= 3 ? Math.ceil(q) : Math.ceil(q * 2) / 2);
 
 /**
  * Adds up the ingredients of every dish in `meals`, scaled for `people`.
- * Returns [{ category, items: [{ key, name, amount, dishes: [names] }] }].
+ * Returns [{ category, items: [{ key, name, amount, dishes: [dish ids] }] }].
  */
 export function buildGroceries(meals, dishes, people) {
   const items = new Map();
@@ -143,7 +145,7 @@ export function buildGroceries(meals, dishes, people) {
           const key = `${name}|${scalable ? unit ?? '#' : '-'}`;
           const entry = items.get(key) ?? { key, name, unit: scalable ? unit : null, qty: 0, counted: !!scalable, dishes: new Set() };
           if (scalable) entry.qty += p.qty * factor * (p.unit === 'tbsp' ? 3 : 1);
-          entry.dishes.add(dish.name);
+          entry.dishes.add(dish.id);
           items.set(key, entry);
           }
         }

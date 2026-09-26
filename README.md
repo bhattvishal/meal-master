@@ -4,12 +4,15 @@ Meal Master is a small web app for your meal plan. It shows today's breakfast, l
 
 ## Pages
 
+The app opens on **Today**. Home is one tap away in the tab bar.
+
 | Page | Address | What it shows |
 | --- | --- | --- |
-| Home | `#/` | An animated plate for today, with the protein total, what's next, and today's three meals |
-| Day | `#/day` or `#/day/2026-09-29` | Breakfast, lunch and dinner cards with a photo, sides and nutrients, plus day totals. Swipe or use the arrow keys to change day |
+| Home | `#/home` | An animated plate for today, with the protein total, what's next, and today's three meals |
+| Today / Day | `#/day` or `#/day/2026-09-29` | Breakfast, lunch and dinner cards with a photo, sides and nutrients, plus day totals. Swipe or use the arrow keys to change day |
 | Meal | `#/meal/2026-09-29/dinner` | A large photo, the nutrition breakdown, tabs for the main dish and each side, ingredients you can tick off, and numbered steps. It can keep the screen on while you cook |
 | Week | `#/week` | Monday to Sunday with every meal, and the week's protein and calorie totals |
+| Settings | `#/settings` | Language (English, हिन्दी, मराठी), number of people, light or dark look. Saved on each device |
 | Shop | `#/shop` or `#/shop/2026-09-28/7` | Grocery list for the next few days, scaled for your household, grouped by aisle, with tick-off boxes and a Share button |
 
 ## How it works
@@ -44,6 +47,8 @@ Both databases live under the **🥗 Meal Plan** page.
 | Prep time (min) | Number | |
 | Tags | Multi-select | High protein, Vegetarian, Make ahead, Office-friendly |
 | Nutrition source | Select | Estimated or Verified |
+| Name (Hindi), Name (Marathi) | Text | Dish name in Hindi and Marathi |
+| Serving (Hindi), Serving (Marathi) | Text | The serving text in Hindi and Marathi |
 
 **Meal Combos**: meals you repeat, saved once. For example, "Idli Sambar" is Idli plus Sambar and Coconut Chutney.
 
@@ -74,6 +79,8 @@ A normal row always wins over a repeat on the same date and meal. So to change o
 
 The page emoji you give a dish is used as its icon until it has a photo.
 
+**Hindi and Marathi recipes**: after the English recipe, add a heading `# हिन्दी` and write the Hindi version under it, using the same layout (`##` section headings, bullet lists for ingredients, numbered lists for steps). Do the same under `# मराठी`. Keep amounts in 0–9 digits so they can scale. When a translation is missing, the app shows the English text. Meal Combos also have Name (Hindi) and Name (Marathi) columns.
+
 ## One-time setup
 
 1. **Create a Notion integration.** Go to <https://www.notion.so/profile/integrations>, create a new internal integration, and give it only "Read content". Copy its secret.
@@ -83,6 +90,7 @@ The page emoji you give a dish is used as its icon until it has a photo.
    - Variable `NOTION_DISHES_DB`: `770bc04d890a41a589192a1f8129d0ef`
    - Variable `NOTION_SCHEDULE_DB`: `fdb3d2f43eee4a739ed7d8543a4bec9d`
    - Variable `NOTION_COMBOS_DB`: `d194d343e1624d3da63e101beec3fdb7`
+   - Variable `NOTION_WHATSAPP_DB`: `3cae8d845e4f4c81bb8c15073d680295` (for the morning WhatsApp messages)
 4. **Make the repo public.** GitHub Pages only works for public repos on a free account. Go to **Settings → General → Danger Zone → Change visibility**. The repo holds no secrets: the Notion key lives in GitHub Secrets.
 5. **Turn on Pages.** Go to **Settings → Pages → Source** and choose **GitHub Actions**.
 6. **Publish.** Merge to `master`, or run **Actions → Sync from Notion and deploy → Run workflow**. The site will be at `https://bhattvishal.github.io/meal-master/`.
@@ -90,6 +98,22 @@ The page emoji you give a dish is used as its icon until it has a photo.
 Until the secrets are set, the site uses the snapshot in `site/data/meals.json`.
 
 > GitHub Pages sites are public, even when the repo is private. Anyone with the link can see the meal data.
+
+## Morning WhatsApp messages
+
+Every day at 6 am India time, `.github/workflows/whatsapp.yml` sends today's meals on WhatsApp. Each person gets one message per meal (breakfast, lunch, snack, dinner), in their chosen language. Each message has the dishes, time, protein, calories, any notes, and a link to the recipe. It uses [CallMeBot](https://www.callmebot.com/blog/free-api-whatsapp-messages/), a free service for personal use.
+
+To add a person (up to as many as you like):
+
+1. On their phone, save CallMeBot's WhatsApp number as a contact. The current number is on the [CallMeBot WhatsApp page](https://www.callmebot.com/blog/free-api-whatsapp-messages/).
+2. From WhatsApp, send it: `I allow callmebot to send me messages`
+3. CallMeBot replies with an API key.
+4. In Notion, open **🥗 Meal Plan → WhatsApp Recipients** and add a row: Name, Phone (with country code, e.g. `+919812345678`), CallMeBot key, Language, and tick **Active**.
+5. In GitHub, add the repository variable `NOTION_WHATSAPP_DB` = `3cae8d845e4f4c81bb8c15073d680295` (once).
+
+To test, run **Actions → Send today's meals on WhatsApp → Run workflow**. Tick "dry run" to only print the messages in the log.
+
+GitHub sometimes starts scheduled runs a few minutes late, so messages may arrive shortly after 6 am. CallMeBot is not an official WhatsApp service; if it stops working, the same script can be switched to Meta's WhatsApp Cloud API.
 
 ## Install it on your Android tablet
 
@@ -122,11 +146,14 @@ The sync needs Node 18 or later and no extra packages.
 ```
 meal-master/
 ├── .github/workflows/deploy.yml   Sync from Notion and publish to GitHub Pages
+├── .github/workflows/whatsapp.yml Morning WhatsApp messages
 ├── scripts/sync-notion.mjs        Notion → site/data/meals.json and photos
+├── scripts/send-whatsapp.mjs      Sends today's meals through CallMeBot
 ├── site/                          The published web app
 │   ├── index.html
 │   ├── app.js                     Pages and navigation
 │   ├── kitchen.js                 Scaling amounts and the grocery list
+│   ├── i18n.js                    English, Hindi and Marathi text
 │   ├── styles.css
 │   ├── sw.js                      Offline support
 │   ├── manifest.webmanifest       Makes it installable as an app
