@@ -1,0 +1,23 @@
+{
+  "name": "Meal Master",
+  "short_name": "Meal Master",
+  "description": "Today's meals, recipes and the week ahead.",
+  "id": "./",
+  "start_url": "./#/",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f7f1e8",
+  "theme_color": "#f7f1e8",
+  "categories": ["food", "health", "lifestyle"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ],
+  "shortcuts": [
+    { "name": "Today's meals", "short_name": "Today", "url": "./#/day", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "This week", "short_name": "Week", "url": "./#/week", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}
