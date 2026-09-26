@@ -26,6 +26,7 @@ Setup, build, and run instructions will be added here once the tech stack is cho
 
 ```
 meal-master/
+├── LICENSE
 └── README.md
 ```
 
@@ -41,4 +42,4 @@ Contributions are welcome:
 
 ## License
 
-No license has been chosen yet. Until one is added, all rights are reserved by the repository owner.
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
