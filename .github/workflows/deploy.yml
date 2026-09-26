@@ -32,6 +32,7 @@ jobs:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DISHES_DB: ${{ vars.NOTION_DISHES_DB }}
           NOTION_SCHEDULE_DB: ${{ vars.NOTION_SCHEDULE_DB }}
+          NOTION_COMBOS_DB: ${{ vars.NOTION_COMBOS_DB }}
         run: node scripts/sync-notion.mjs
 
       - name: Stamp build version

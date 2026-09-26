@@ -3,7 +3,7 @@
 // Photos are downloaded into site/images/ because Notion file links expire after an hour.
 // Dishes without a photo get a free stock photo from Wikimedia Commons.
 //
-// Env: NOTION_TOKEN, NOTION_DISHES_DB, NOTION_SCHEDULE_DB
+// Env: NOTION_TOKEN, NOTION_DISHES_DB, NOTION_SCHEDULE_DB, NOTION_COMBOS_DB (optional)
 // Optional: PAST_DAYS (default 14), FUTURE_DAYS (default 60), STOCK_PHOTOS=0 to disable Commons lookup.
 
 import { mkdir, writeFile, rm } from 'node:fs/promises';
@@ -18,7 +18,7 @@ const OUT_FILE = join(SITE, 'data', 'meals.json');
 const NOTION_VERSION = '2022-06-28';
 const USER_AGENT = 'meal-master-sync/1.0 (https://github.com/bhattvishal/meal-master)';
 
-const { NOTION_TOKEN, NOTION_DISHES_DB, NOTION_SCHEDULE_DB } = process.env;
+const { NOTION_TOKEN, NOTION_DISHES_DB, NOTION_SCHEDULE_DB, NOTION_COMBOS_DB } = process.env;
 const PAST_DAYS = Number(process.env.PAST_DAYS ?? 14);
 const FUTURE_DAYS = Number(process.env.FUTURE_DAYS ?? 60);
 const STOCK_PHOTOS = process.env.STOCK_PHOTOS !== '0';
@@ -170,29 +170,95 @@ async function photoFor(page, name) {
 
 const isoDay = (d) => d.toISOString().slice(0, 10);
 const shift = (days) => isoDay(new Date(Date.now() + days * 86400000));
+const addDays = (day, n) => isoDay(new Date(Date.parse(`${day}T00:00:00Z`) + n * 86400000));
+const weekday = (day) => new Date(`${day}T00:00:00Z`).getUTCDay(); // 0 = Sunday
+
+// Which days a repeating row lands on.
+const REPEATS = {
+  daily: () => true,
+  weekdays: (day) => weekday(day) >= 1 && weekday(day) <= 5,
+  weekends: (day) => weekday(day) === 0 || weekday(day) === 6,
+  weekly: (day, from) => weekday(day) === weekday(from),
+};
+
+// Turns schedule rows into one meal per date. One-off rows win over repeats on the same
+// date and meal; among repeats, the one that started most recently wins.
+function expandSchedule(rows, combos, windowStart, windowEnd) {
+  const byKey = new Map();
+  const put = (meal, priority) => {
+    const key = `${meal.date}|${meal.meal}`;
+    const existing = byKey.get(key);
+    if (!existing || priority > existing.priority) byKey.set(key, { meal, priority });
+  };
+
+  for (const p of rows) {
+    const date = prop(p, 'Date')?.slice(0, 10);
+    if (!date) continue;
+    const combo = combos.get(prop(p, 'Combo')?.[0]);
+    const main = prop(p, 'Main') ?? [];
+    const sides = prop(p, 'Sides') ?? [];
+    const base = {
+      meal: (prop(p, 'Meal') || combo?.meal || 'Dinner').toLowerCase(),
+      name: prop(p, 'Name') || combo?.name || null,
+      time: prop(p, 'Time'),
+      notes: prop(p, 'Notes') || combo?.notes || null,
+      combo: combo?.name ?? null,
+      main: main.length ? main : combo?.main ?? [],
+      sides: sides.length ? sides : combo?.sides ?? [],
+      draft: prop(p, 'Planned by') === 'Claude draft',
+    };
+    const repeat = prop(p, 'Repeat')?.toLowerCase();
+    if (!repeat || !REPEATS[repeat]) {
+      if (date >= windowStart && date <= windowEnd) put({ id: p.id, date, ...base, repeat: null }, Infinity);
+      continue;
+    }
+    const until = prop(p, 'Until')?.slice(0, 10) ?? windowEnd;
+    const last = until < windowEnd ? until : windowEnd;
+    for (let day = date > windowStart ? date : windowStart; day <= last; day = addDays(day, 1)) {
+      if (REPEATS[repeat](day, date)) put({ id: `${p.id}:${day}`, date: day, ...base, repeat }, Date.parse(date));
+    }
+  }
+  return [...byKey.values()]
+    .map((v) => v.meal)
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? '').localeCompare(b.time ?? ''));
+}
 
 async function main() {
+  const windowStart = shift(-PAST_DAYS);
+  const windowEnd = shift(FUTURE_DAYS);
+
+  const combos = new Map();
+  if (NOTION_COMBOS_DB) {
+    console.log('Querying meal combos…');
+    for (const p of await queryAll(NOTION_COMBOS_DB)) {
+      combos.set(p.id, {
+        name: prop(p, 'Name'),
+        meal: prop(p, 'Meal'),
+        notes: prop(p, 'Notes'),
+        main: prop(p, 'Main') ?? [],
+        sides: prop(p, 'Sides') ?? [],
+      });
+    }
+  }
+
   console.log('Querying meal schedule…');
   const schedule = await queryAll(NOTION_SCHEDULE_DB, {
-    and: [
-      { property: 'Date', date: { on_or_after: shift(-PAST_DAYS) } },
-      { property: 'Date', date: { on_or_before: shift(FUTURE_DAYS) } },
+    or: [
+      {
+        and: [
+          { property: 'Date', date: { on_or_after: windowStart } },
+          { property: 'Date', date: { on_or_before: windowEnd } },
+        ],
+      },
+      {
+        and: [
+          { property: 'Repeat', select: { is_not_empty: true } },
+          { property: 'Date', date: { on_or_before: windowEnd } },
+        ],
+      },
     ],
   });
-
-  const meals = schedule
-    .map((p) => ({
-      id: p.id,
-      date: prop(p, 'Date')?.slice(0, 10),
-      meal: (prop(p, 'Meal') || 'Dinner').toLowerCase(),
-      name: prop(p, 'Name'),
-      time: prop(p, 'Time'),
-      notes: prop(p, 'Notes'),
-      main: prop(p, 'Main') ?? [],
-      sides: prop(p, 'Sides') ?? [],
-    }))
-    .filter((m) => m.date)
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const meals = expandSchedule(schedule, combos, windowStart, windowEnd);
 
   console.log('Querying dishes…');
   const dishPages = await queryAll(NOTION_DISHES_DB);
@@ -221,6 +287,7 @@ async function main() {
       },
       nutritionSource: prop(page, 'Nutrition source'),
       serving: prop(page, 'Serving'),
+      serves: prop(page, 'Serves'),
       prepTime: prop(page, 'Prep time (min)'),
       tags: prop(page, 'Tags') ?? [],
       notionUrl: page.url,

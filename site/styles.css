@@ -377,3 +377,33 @@ a.slot:hover { transform: scale(1.03); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition: none !important; }
 }
+
+/* ---------- Badges, people control, grocery list ---------- */
+.chip.small { padding: 3px 10px; font-size: 12px; }
+.chip.draft { background: color-mix(in srgb, var(--snack) 18%, var(--surface)); }
+.chip.active { background: var(--accent); color: var(--accent-ink); }
+.icon-btn.small { width: 34px; height: 34px; font-size: 20px; font-weight: 700; line-height: 1; }
+.people { display: inline-flex; align-items: center; gap: 10px; padding: 4px; border-radius: 999px; background: var(--surface-2); }
+.people span { min-width: 76px; text-align: center; font-weight: 600; }
+.scale-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-size: 14px; }
+
+.shop-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.range-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.range-chips .chip { box-shadow: var(--shadow); background: var(--surface); }
+.range-chips .chip.active { background: var(--accent); color: var(--accent-ink); }
+.shop-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; color: var(--ink-2); }
+.shop-summary .actions { display: flex; gap: 8px; }
+.shop-summary .btn { padding: 9px 16px; font-size: 14px; }
+.shop-grid { columns: 1; column-gap: 18px; }
+@media (min-width: 720px) { .shop-grid { columns: 2; } }
+@media (min-width: 1100px) { .shop-grid { columns: 3; } }
+.shop-group { break-inside: avoid; margin-bottom: 18px; }
+.shop-item { display: grid; grid-template-columns: 1fr auto; gap: 0 12px; flex: 1; }
+.shop-item small { grid-column: 1 / -1; font-size: 12px; }
+.shop-amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ingredients input:checked + .shop-item .shop-name, .ingredients input:checked + .shop-item .shop-amt { text-decoration: line-through; color: var(--ink-3); }
+.shop-group .ingredients input:checked { background: var(--accent); border-color: var(--accent); }
+@media (max-width: 480px) {
+  .tabbar a { padding: 10px 12px; gap: 6px; }
+  .tabbar a:not([aria-current="page"]) span { display: none; }
+}

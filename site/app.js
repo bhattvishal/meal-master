@@ -3,6 +3,9 @@
 //   #/day[/YYYY-MM-DD]      breakfast, lunch and dinner for a day
 //   #/meal/YYYY-MM-DD/slot  one meal with its dishes and recipes
 //   #/week[/YYYY-MM-DD]     the week (Mon-Sun) containing that date
+//   #/shop[/YYYY-MM-DD/N]   grocery list for N days from that date
+
+import { getPeople, setPeople, factorFor, scaleLine, buildGroceries } from './kitchen.js';
 
 const SLOTS = ['breakfast', 'lunch', 'dinner'];
 const SLOT_LABEL = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack' };
@@ -66,6 +69,19 @@ function sum(dishes) {
   return out;
 }
 const show = (v, unit = '') => (v == null ? '—' : `${v}${unit}`);
+const REPEAT_LABEL = { daily: 'Every day', weekdays: 'Every weekday', weekends: 'Every weekend', weekly: 'Every week' };
+function badges(meal) {
+  return [
+    meal.repeat ? `<span class="chip small">🔁 ${REPEAT_LABEL[meal.repeat] ?? 'Repeats'}</span>` : '',
+    meal.draft ? '<span class="chip small draft">✏️ Claude draft</span>' : '',
+  ].join('');
+}
+const peopleControl = (people) => `
+  <div class="people" role="group" aria-label="Number of people">
+    <button class="icon-btn small" data-people="-1" aria-label="Fewer people">−</button>
+    <span><b>${people}</b> ${people === 1 ? 'person' : 'people'}</span>
+    <button class="icon-btn small" data-people="1" aria-label="More people">+</button>
+  </div>`;
 
 function mealTime(meal, slot) {
   return meal?.time || SLOT_TIME[slot];
@@ -219,6 +235,7 @@ function dayPage(date) {
       </div>
       <div class="body">
         <h3>${esc(dish.name)}</h3>
+        ${meal.repeat || meal.draft ? `<div class="sides">${badges(meal)}</div>` : ''}
         ${sides.length ? `<div class="sides"><span class="with">with</span>${sides.map((s) => `<span class="chip">${s.emoji ?? ''} ${esc(s.name)}</span>`).join('')}</div>` : ''}
         ${macroBars(n)}
         <div class="cta"><span>${show(n.calories, ' kcal')}</span><span>View recipe →</span></div>
@@ -270,12 +287,14 @@ function mealPage(date, slot, selectedId) {
   const lists = sections.filter((s) => s.kind !== 'steps');
   const steps = sections.filter((s) => s.kind === 'steps');
   const checked = loadChecks(meal.id, dish.id);
+  const people = getPeople();
+  const factor = factorFor(dish, people);
   let idx = 0;
   const listHtml = lists.map((s) => `
     <div><h3>${esc(s.title || 'Ingredients')}</h3>
     ${s.kind === 'text' ? s.items.map((t) => `<p>${esc(t)}</p>`).join('') : `<ul class="ingredients">${s.items.map((it) => {
       const k = idx++;
-      return `<li><label><input type="checkbox" data-check="${k}" ${checked.includes(k) ? 'checked' : ''}><span>${esc(it)}</span></label></li>`;
+      return `<li><label><input type="checkbox" data-check="${k}" ${checked.includes(k) ? 'checked' : ''}><span>${esc(scaleLine(it, factor))}</span></label></li>`;
     }).join('')}</ul>`}</div>`).join('');
   const stepHtml = steps.map((s) => `<div><h3>${esc(s.title || 'Method')}</h3><ol class="steps">${s.items.map((it) => `<li><span>${esc(it)}</span></li>`).join('')}</ol></div>`).join('');
 
@@ -302,8 +321,9 @@ function mealPage(date, slot, selectedId) {
               <div class="center"><b>${show(n.calories == null ? null : Math.round(n.calories))}</b><span>kcal</span></div></div>
             <div class="legend">${MACROS.map((m) => `<div><i style="--c:var(--${m.key})"></i>${m.label}<b>${show(n[m.key], ' g')}</b></div>`).join('')}</div>
           </div>
-          ${dishes.some((d) => d.nutritionSource === 'Estimated') ? '<p class="muted" style="font-size:13px;margin:14px 0 0">Some values are estimates.</p>' : ''}
+          <p class="muted" style="font-size:13px;margin:14px 0 0">Per person${dishes.some((d) => d.nutritionSource === 'Estimated') ? '. Some values are estimates' : ''}.</p>
         </div>
+        ${meal.repeat || meal.draft || meal.combo ? `<div class="meta rise" style="--i:2">${meal.combo ? `<span class="chip small">🍱 ${esc(meal.combo)}</span>` : ''}${badges(meal)}</div>` : ''}
         ${meal.notes ? `<div class="note rise" style="--i:2">📝 ${esc(meal.notes)}</div>` : ''}
         ${'wakeLock' in navigator ? `<div class="panel rise toggle" style="--i:3"><span>🍳 Keep screen on while cooking</span><button class="switch" role="switch" aria-checked="${wakeLock ? 'true' : 'false'}" data-wake aria-label="Keep screen on"></button></div>` : ''}
       </aside>
@@ -329,6 +349,7 @@ function mealPage(date, slot, selectedId) {
               ${dish.intro ? `<p class="muted" style="margin:12px 0 0">${esc(dish.intro)}</p>` : ''}
             </div>
           </div>
+          <div class="scale-row">${peopleControl(people)}<span class="muted">${dish.serves ? (factor === 1 ? 'Amounts as written' : `Amounts scaled from ${dish.serves} to ${people}`) : 'Amounts as written (no serving count in Notion)'}</span></div>
           ${sections.length ? `<div class="recipe ${lists.length && steps.length ? 'two' : ''}">${listHtml ? `<div class="recipe-col">${listHtml}</div>` : ''}${stepHtml ? `<div class="recipe-col">${stepHtml}</div>` : ''}</div>` : '<p class="muted">No recipe written yet.</p>'}
           ${dish.notionUrl ? `<p style="margin:0"><a class="muted" style="text-decoration:underline" href="${esc(dish.notionUrl)}" target="_blank" rel="noopener">Open in Notion</a></p>` : ''}
         </article>
@@ -376,6 +397,74 @@ function weekPage(date) {
     ${footer()}`;
 }
 
+function shopPage(from, days) {
+  const to = addDays(from, days - 1);
+  const meals = data.meals.filter((m) => m.date >= from && m.date <= to);
+  const people = getPeople();
+  const groups = buildGroceries(meals, data.dishes, people);
+  const listKey = `shop:${from}:${days}`;
+  const ticked = new Set(loadList(listKey));
+  const total = groups.reduce((a, g) => a + g.items.length, 0);
+  const done = groups.reduce((a, g) => a + g.items.filter((i) => ticked.has(i.key)).length, 0);
+  const mon = weekStart(today());
+  const ranges = [
+    ['Next 3 days', today(), 3],
+    ['Next 7 days', today(), 7],
+    ['This week', mon, 7],
+    ['Next week', addDays(mon, 7), 7],
+  ];
+  const range = `${fmt(from, { weekday: 'short', day: 'numeric', month: 'short' })} – ${fmt(to, { weekday: 'short', day: 'numeric', month: 'short' })}`;
+  const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+
+  return `
+    <header class="page-head rise">
+      <div class="titles"><div class="eyebrow">Grocery list</div><h1>${range}</h1></div>
+      <div class="nav">
+        <a class="icon-btn" href="#/shop/${addDays(from, -days)}/${days}" aria-label="Earlier">${chevron('left')}</a>
+        <a class="icon-btn" href="#/shop/${addDays(from, days)}/${days}" aria-label="Later">${chevron('right')}</a>
+      </div>
+    </header>
+    <div class="shop-bar rise" style="--i:1">
+      <div class="range-chips">${ranges.map(([label, f, n]) => `<a class="chip${f === from && n === days ? ' active' : ''}" href="#/shop/${f}/${n}">${label}</a>`).join('')}</div>
+      ${peopleControl(people)}
+    </div>
+    <div class="shop-summary rise" style="--i:2">
+      <span><b>${meals.length}</b> meals · <b>${total}</b> items${total ? ` · <b data-done>${done}</b> in the basket` : ''}</span>
+      <span class="actions">
+        ${total ? '<button class="btn" data-share>Share list</button><button class="btn" data-clear>Clear ticks</button>' : ''}
+      </span>
+    </div>
+    ${total ? `<div class="shop-grid" data-list="${listKey}">${groups.map((g, gi) => `
+      <section class="panel shop-group rise" style="--i:${gi + 3}">
+        <h2>${esc(g.category)}</h2>
+        <ul class="ingredients">${g.items.map((it) => `
+          <li><label><input type="checkbox" data-shop="${esc(it.key)}" ${ticked.has(it.key) ? 'checked' : ''}>
+            <span class="shop-item"><span class="shop-name">${esc(cap(it.name))}</span>${it.amount ? `<b class="shop-amt">${esc(it.amount)}</b>` : ''}
+            <small class="muted">${esc(it.dishes.join(', '))}</small></span></label></li>`).join('')}
+        </ul>
+      </section>`).join('')}</div>`
+      : '<div class="panel" style="text-align:center"><p class="muted">No meals planned in these days.</p></div>'}
+    <p class="footer-note">Amounts are for ${people} ${people === 1 ? 'person' : 'people'}. Recipes without a serving count in Notion are listed without amounts.</p>
+    ${footer()}`;
+}
+
+function shopText() {
+  const lines = [...app.querySelectorAll('.shop-group')].map((g) => {
+    const items = [...g.querySelectorAll('li')]
+      .filter((li) => !li.querySelector('input').checked)
+      .map((li) => `• ${li.querySelector('.shop-name').textContent}${li.querySelector('.shop-amt') ? ` — ${li.querySelector('.shop-amt').textContent}` : ''}`);
+    return items.length ? `${g.querySelector('h2').textContent}\n${items.join('\n')}` : '';
+  }).filter(Boolean);
+  return `${app.querySelector('h1').textContent}\n\n${lines.join('\n\n')}`;
+}
+
+function loadList(key) {
+  try { return JSON.parse(localStorage.getItem(key) ?? '[]'); } catch { return []; }
+}
+function saveList(key, list) {
+  try { localStorage.setItem(key, JSON.stringify(list)); } catch { /* storage unavailable */ }
+}
+
 // ---------- ingredient checkboxes (per viewer, remembered on this device) ----------
 
 function loadChecks(mealId, dishId) {
@@ -392,6 +481,11 @@ function route() {
   switch (page) {
     case 'day': return { tab: 'day', render: () => dayPage(isDate(a) ? a : today()), swipe: (dir) => `#/day/${addDays(isDate(a) ? a : today(), dir)}` };
     case 'week': return { tab: 'week', render: () => weekPage(isDate(a) ? a : today()), swipe: (dir) => `#/week/${addDays(weekStart(isDate(a) ? a : today()), dir * 7)}` };
+    case 'shop': {
+      const from = isDate(a) ? a : today();
+      const days = Math.min(14, Math.max(1, Number(b) || 7));
+      return { tab: 'shop', render: () => shopPage(from, days), swipe: (dir) => `#/shop/${addDays(from, dir * days)}/${days}` };
+    }
     case 'meal': return { tab: 'day', render: () => mealPage(isDate(a) ? a : today(), b || 'dinner') };
     default: return { tab: 'home', render: homePage };
   }
@@ -438,6 +532,29 @@ app.addEventListener('click', async (e) => {
     window.scrollTo({ top: y, behavior: 'instant' });
     return;
   }
+  const people = e.target.closest('[data-people]');
+  if (people) {
+    setPeople(getPeople() + Number(people.dataset.people));
+    const y = window.scrollY;
+    const selected = app.querySelector('[data-dishid]')?.dataset.dishid;
+    const [page, date, slot] = location.hash.replace(/^#\/?/, '').split('/');
+    app.innerHTML = page === 'meal' ? mealPage(date, slot, selected) : current.render();
+    window.scrollTo({ top: y, behavior: 'instant' });
+    return;
+  }
+  if (e.target.closest('[data-share]')) {
+    const text = shopText();
+    try {
+      if (navigator.share) await navigator.share({ title: 'Grocery list', text });
+      else { await navigator.clipboard.writeText(text); e.target.textContent = 'Copied!'; }
+    } catch { /* share cancelled */ }
+    return;
+  }
+  if (e.target.closest('[data-clear]')) {
+    saveList(app.querySelector('[data-list]').dataset.list, []);
+    app.innerHTML = current.render();
+    return;
+  }
   const wake = e.target.closest('[data-wake]');
   if (wake) {
     try {
@@ -449,6 +566,14 @@ app.addEventListener('click', async (e) => {
 });
 
 app.addEventListener('change', (e) => {
+  if (e.target.matches('[data-shop]')) {
+    const list = app.querySelector('[data-list]');
+    const keys = [...list.querySelectorAll('[data-shop]')].filter((c) => c.checked).map((c) => c.dataset.shop);
+    saveList(list.dataset.list, keys);
+    const done = app.querySelector('[data-done]');
+    if (done) done.textContent = keys.length;
+    return;
+  }
   if (!e.target.matches('[data-check]')) return;
   const article = e.target.closest('[data-dishid]');
   const list = [...article.querySelectorAll('[data-check]')].filter((c) => c.checked).map((c) => Number(c.dataset.check));
