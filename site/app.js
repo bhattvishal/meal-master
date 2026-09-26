@@ -481,6 +481,11 @@ function settingsPage() {
         <div class="choices">${option('data-theme-choice', 'auto', theme, t('system'))}${option('data-theme-choice', 'light', theme, `☀️ ${t('light')}`)}${option('data-theme-choice', 'dark', theme, `🌙 ${t('dark')}`)}</div>
       </section>
       <section class="panel rise" style="--i:4">
+        <h2>💬 ${t('whatsapp')}</h2>
+        <p class="muted" style="margin-top:0">${t('whatsappHelp')}</p>
+        ${data.notionWhatsappUrl ? `<p><a class="btn" href="${esc(data.notionWhatsappUrl)}" target="_blank" rel="noopener">${t('whatsappEdit')}</a></p>` : ''}
+      </section>
+      <section class="panel rise" style="--i:5">
         <h2>🗂 ${t('dataTitle')}</h2>
         <p class="muted" style="margin-top:0">${t('lastSynced')}: ${esc(syncedAt())}</p>
         ${data.notionScheduleUrl ? `<a class="btn" href="${esc(data.notionScheduleUrl)}" target="_blank" rel="noopener">${t('editNotion')}</a>` : ''}

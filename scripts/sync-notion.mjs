@@ -335,6 +335,7 @@ async function main() {
     generatedAt: new Date().toISOString(),
     source: 'notion',
     notionScheduleUrl: `https://www.notion.so/${NOTION_SCHEDULE_DB.replace(/-/g, '')}`,
+    notionWhatsappUrl: process.env.NOTION_WHATSAPP_DB ? `https://www.notion.so/${process.env.NOTION_WHATSAPP_DB.replace(/-/g, '')}` : null,
     dishes,
     meals,
   };
