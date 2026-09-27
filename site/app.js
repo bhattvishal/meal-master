@@ -353,7 +353,24 @@ function mealPage(date, slot, selectedId) {
     </section>
 
     <div class="detail meal-${slot}">
-      <aside style="display:grid;gap:16px">
+      <aside>
+        <div class="panel dish-info rise" style="--i:1">
+          <div class="dish-head">
+            ${photo(dish, slot, { credit: true, eager: true })}
+            <div>
+              <h2>${esc(name(dish))}</h2>
+              <div class="meta">
+                ${dish.prepTime ? `<span class="chip">⏱ ${dish.prepTime} ${t('min')}</span>` : ''}
+                ${dishText(dish, 'serving') ? `<span class="chip">🍽 ${esc(dishText(dish, 'serving'))}</span>` : ''}
+                ${dish.nutrition?.protein != null ? `<span class="chip">💪 ${dish.nutrition.protein} ${t('gProtein')}</span>` : ''}
+                ${dish.nutrition?.calories != null ? `<span class="chip">🔥 ${dish.nutrition.calories} ${kcal()}</span>` : ''}
+                ${(dish.tags ?? []).map((x) => `<span class="chip">${esc(tag(x))}</span>`).join('')}
+              </div>
+              ${intro ? `<p class="muted" style="margin:12px 0 0">${esc(intro)}</p>` : ''}
+            </div>
+          </div>
+          <div class="scale-row">${peopleControl(people)}<span class="muted">${esc(peopleText(people))} · ${esc(scaleNote)}</span></div>
+        </div>
         <div class="panel rise" style="--i:1">
           <h2>${t('thisMeal')}</h2>
           <div class="donut-wrap">
@@ -371,21 +388,6 @@ function mealPage(date, slot, selectedId) {
       <div style="display:grid;gap:18px;min-width:0">
 
         <article class="panel dish rise" style="--i:2" data-meal="${meal.id}" data-dishid="${dish.id}">
-          <div class="dish-head">
-            ${photo(dish, slot, { credit: true, eager: true })}
-            <div>
-              <h2>${esc(name(dish))}</h2>
-              <div class="meta">
-                ${dish.prepTime ? `<span class="chip">⏱ ${dish.prepTime} ${t('min')}</span>` : ''}
-                ${dishText(dish, 'serving') ? `<span class="chip">🍽 ${esc(dishText(dish, 'serving'))}</span>` : ''}
-                ${dish.nutrition?.protein != null ? `<span class="chip">💪 ${dish.nutrition.protein} ${t('gProtein')}</span>` : ''}
-                ${dish.nutrition?.calories != null ? `<span class="chip">🔥 ${dish.nutrition.calories} ${kcal()}</span>` : ''}
-                ${(dish.tags ?? []).map((x) => `<span class="chip">${esc(tag(x))}</span>`).join('')}
-              </div>
-              ${intro ? `<p class="muted" style="margin:12px 0 0">${esc(intro)}</p>` : ''}
-            </div>
-          </div>
-          <div class="scale-row">${peopleControl(people)}<span class="muted">${esc(peopleText(people))} · ${esc(scaleNote)}</span></div>
           ${sections.length ? `<div class="recipe ${lists.length && steps.length ? 'two' : ''}">${listHtml ? `<div class="recipe-col">${listHtml}</div>` : ''}${stepHtml ? `<div class="recipe-col">${stepHtml}</div>` : ''}</div>` : `<p class="muted">${t('noRecipe')}</p>`}
           ${dish.notionUrl ? `<p style="margin:0"><a class="muted" style="text-decoration:underline" href="${esc(dish.notionUrl)}" target="_blank" rel="noopener">${t('openNotion')}</a></p>` : ''}
         </article>

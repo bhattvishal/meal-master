@@ -270,7 +270,7 @@ a.meal-card:hover .photo img { transform: scale(1.06); }
 @keyframes kenburns { from { transform: scale(1.15); } }
 
 .detail { display: grid; gap: 24px; margin-top: 24px; }
-@media (min-width: 1000px) { .detail { grid-template-columns: 340px 1fr; align-items: start; } .detail aside { position: sticky; top: 20px; } }
+@media (min-width: 1000px) { .detail { grid-template-columns: 340px 1fr; align-items: start; } }
 .panel { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; }
 .panel h2 { font-size: 20px; margin-bottom: 14px; }
 .donut-wrap { display: flex; align-items: center; gap: 20px; }
@@ -671,7 +671,6 @@ body[data-page="meal"] main { max-width: none; }
   .meal-top h1 .sub { display: block; white-space: normal; margin-top: 2px; }
 }
 /* Below two columns, the recipe comes first and the meal summary follows it. */
-@media (max-width: 999px) { .detail aside { order: 2; } }
 .meal-top .dish-tab { box-shadow: none; background: var(--surface-2); }
 .meal-top .dish-tab[aria-selected="true"] { background: var(--meal); }
 @media (max-width: 699px) {
@@ -681,4 +680,38 @@ body[data-page="meal"] main { max-width: none; }
   .dish-head h2 { font-size: 24px; margin-bottom: 6px; }
   .dish-head .meta .chip { font-size: 12px; padding: 4px 9px; }
   .dish-head > div > p { grid-column: 1 / -1; }
+}
+
+/* Meal page: the dish's photo, details and people counter sit in the left column,
+   so the right side is just ingredients and method. */
+.detail aside { display: grid; gap: 16px; align-content: start; }
+.dish-info .dish-head { grid-template-columns: 1fr; gap: 12px; }
+.dish-info .dish-head .photo { aspect-ratio: 16 / 10; }
+.dish-info .dish-head h2 { font-size: clamp(22px, 2vw, 28px); margin-bottom: 8px; }
+.dish-info .meta { gap: 6px; }
+.dish-info .meta .chip { font-size: 12.5px; padding: 4px 10px; }
+.dish-info .scale-row { margin-top: 14px; flex-wrap: wrap; }
+.dish-info .scale-row .muted { font-size: 13px; }
+
+/* One column: dish details, then the recipe, then the meal summary. */
+@media (max-width: 999px) {
+  .detail aside { display: contents; }
+  .detail aside > * { order: 3; }
+  .detail aside > .dish-info { order: 1; }
+  .detail > :not(aside) { order: 2; }
+}
+@media (min-width: 700px) and (max-width: 999px) {
+  .dish-info .dish-head { grid-template-columns: 220px 1fr; align-items: center; gap: 18px; }
+}
+@media (max-width: 699px) {
+  .dish-info .dish-head { grid-template-columns: 96px 1fr; align-items: center; }
+  .dish-info .dish-head .photo { aspect-ratio: 1; }
+}
+@media (max-width: 699px) {
+  .dish-info .dish-head { grid-template-columns: 72px 1fr; gap: 10px 14px; }
+  .dish-info .dish-head .photo { width: 72px; height: 72px; border-radius: 14px; }
+  .dish-info .dish-head .photo .emoji { font-size: 34px; }
+  .dish-info .dish-head > div:not(.photo) { display: contents; }
+  .dish-info .dish-head h2 { margin: 0; align-self: center; }
+  .dish-info .dish-head .meta, .dish-info .dish-head > div:not(.photo) > p { grid-column: 1 / -1; margin-top: 0 !important; }
 }
