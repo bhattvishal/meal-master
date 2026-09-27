@@ -338,18 +338,18 @@ function mealPage(date, slot, selectedId) {
     ? (factor === 1 ? t('amountsWritten') : t('amountsScaled', { from: dish.serves, to: people }))
     : t('amountsNoServes');
 
+  // A compact header instead of a big photo: the dishes already have their own photos below.
   return `
-    <section class="hero meal-${slot}">
-      ${photo(main, slot, { credit: true, eager: true })}
-      <div class="top">
-        <a class="icon-btn" href="#/day/${date}" aria-label="${esc(t('backToDay'))}">${chevron('left')}</a>
-        <span class="pill meal-${slot}"><span class="dot"></span>${slotName(slot)} · ${mealTime(meal, slot)}</span>
+    <section class="panel meal-top meal-${slot} rise">
+      <a class="icon-btn" href="#/day/${date}" aria-label="${esc(t('backToDay'))}">${chevron('left')}</a>
+      <div class="titles">
+        <div class="eyebrow"><span class="pill meal-${slot}"><span class="dot"></span>${slotName(slot)} · ${mealTime(meal, slot)}</span> ${esc(relDay(date))} · ${fmt(date, { day: 'numeric', month: 'long' })}</div>
+        <h1>${esc(name(main))}${dishes.length > 1 ? ` <span class="sub">${t('with')} ${dishes.slice(1).map((d) => esc(name(d))).join(' & ')}</span>` : ''}</h1>
       </div>
-      <div class="caption">
-        <div class="eyebrow" style="color:rgba(255,255,255,.8)">${esc(relDay(date))} · ${fmt(date, { day: 'numeric', month: 'long' })}</div>
-        <h1>${esc(name(main))}</h1>
-        ${dishes.length > 1 ? `<div class="sub">${t('with')} ${dishes.slice(1).map((d) => esc(name(d))).join(' & ')}</div>` : ''}
-      </div>
+      ${dishes.length > 1 ? `<div class="dish-tabs" role="tablist">${dishes.map((d) => `
+        <button class="dish-tab" role="tab" aria-selected="${d.id === dish.id}" data-dish="${d.id}">
+          ${photo(d, slot)}<span><small>${t(d.role === 'main' ? 'main' : 'side')}</small>${esc(name(d))}</span>
+        </button>`).join('')}</div>` : ''}
     </section>
 
     <div class="detail meal-${slot}">
@@ -369,14 +369,10 @@ function mealPage(date, slot, selectedId) {
       </aside>
 
       <div style="display:grid;gap:18px;min-width:0">
-        ${dishes.length > 1 ? `<div class="dish-tabs" role="tablist">${dishes.map((d) => `
-          <button class="dish-tab" role="tab" aria-selected="${d.id === dish.id}" data-dish="${d.id}">
-            ${photo(d, slot)}<span><small>${t(d.role === 'main' ? 'main' : 'side')}</small>${esc(name(d))}</span>
-          </button>`).join('')}</div>` : ''}
 
         <article class="panel dish rise" style="--i:2" data-meal="${meal.id}" data-dishid="${dish.id}">
           <div class="dish-head">
-            ${photo(dish, slot, { credit: dish.id !== main.id })}
+            ${photo(dish, slot, { credit: true, eager: true })}
             <div>
               <h2>${esc(name(dish))}</h2>
               <div class="meta">

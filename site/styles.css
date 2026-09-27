@@ -267,20 +267,7 @@ a.meal-card:hover .photo img { transform: scale(1.06); }
 @keyframes fill { to { width: var(--w); } }
 
 /* ---------- Meal detail ---------- */
-.hero {
-  position: relative; margin: -20px -16px 0; height: clamp(300px, 52vh, 520px); overflow: hidden;
-  border-radius: 0 0 36px 36px; box-shadow: var(--shadow-lg);
-}
-@media (min-width: 720px) { .hero { margin: 0; border-radius: 36px; } }
-.hero .photo { position: absolute; inset: 0; }
-.hero .photo img { animation: kenburns 18s ease-out both; }
 @keyframes kenburns { from { transform: scale(1.15); } }
-.hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to top, rgba(0, 0, 0, .72), rgba(0, 0, 0, .1) 45%, rgba(0, 0, 0, .25)); pointer-events: none; }
-.hero .top { position: absolute; z-index: 2; top: max(16px, env(safe-area-inset-top)); left: 16px; right: 16px; display: flex; justify-content: space-between; }
-.hero .caption { position: absolute; z-index: 2; left: 24px; right: 24px; bottom: 24px; color: #fff; }
-.hero .caption h1 { font-size: clamp(32px, 5.5vw, 60px); text-shadow: 0 2px 20px rgba(0, 0, 0, .3); }
-.hero .caption .sub { margin-top: 8px; opacity: .9; font-weight: 600; }
-.hero .photo .credit { z-index: 3; }
 
 .detail { display: grid; gap: 24px; margin-top: 24px; }
 @media (min-width: 1000px) { .detail { grid-template-columns: 340px 1fr; align-items: start; } .detail aside { position: sticky; top: 20px; } }
@@ -660,3 +647,38 @@ body[data-page="shop"] main, body[data-page="prep"] main { max-width: none; }
 .ingredients input:checked + .prep-item .prep-text { text-decoration: line-through; color: var(--ink-3); }
 .prep-group .ingredients input:checked { background: var(--accent); border-color: var(--accent); }
 .chip.prep-chip { background: color-mix(in srgb, #e08a00 16%, var(--surface)); }
+
+/* Meal page: a compact header with the dish switcher, then the recipe across the full width. */
+body[data-page="meal"] main { max-width: none; }
+@media (min-width: 1000px) { body[data-page="meal"] main { padding-left: clamp(16px, 2.2vw, 28px); padding-right: clamp(16px, 2.2vw, 28px); } }
+.meal-top { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; padding: 14px 18px; }
+.meal-top .titles { flex: 1 1 280px; min-width: 0; }
+.meal-top .eyebrow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-bottom: 4px; }
+.meal-top .pill { box-shadow: none; background: var(--surface-2); text-transform: none; letter-spacing: 0; }
+.meal-top h1 { font-size: clamp(24px, 2.6vw, 36px); }
+.meal-top h1 .sub { font-family: var(--sans); font-size: .5em; font-weight: 600; color: var(--ink-2); letter-spacing: 0; white-space: nowrap; }
+.meal-top .dish-tabs { padding: 2px; margin-left: auto; max-width: 100%; }
+@media (max-width: 699px) { .meal-top .dish-tabs { flex-basis: 100%; } }
+.meal-top + .detail { margin-top: 16px; }
+@media (min-width: 1000px) { .detail { grid-template-columns: 300px 1fr; } .detail aside { top: 12px; } }
+.meal-top .dish-tabs { background: none; }
+.detail .legend b { white-space: nowrap; }
+@media (min-width: 1000px) { .detail { grid-template-columns: 320px 1fr; } }
+@media (max-width: 699px) {
+  .meal-top { padding: 12px 14px; gap: 10px 12px; }
+  .meal-top .titles { flex: 1 1 0; }
+  .meal-top h1 { font-size: 24px; }
+  .meal-top h1 .sub { display: block; white-space: normal; margin-top: 2px; }
+}
+/* Below two columns, the recipe comes first and the meal summary follows it. */
+@media (max-width: 999px) { .detail aside { order: 2; } }
+.meal-top .dish-tab { box-shadow: none; background: var(--surface-2); }
+.meal-top .dish-tab[aria-selected="true"] { background: var(--meal); }
+@media (max-width: 699px) {
+  .dish-head { grid-template-columns: 96px 1fr; align-items: center; gap: 12px; }
+  .dish-head .photo { aspect-ratio: 1; border-radius: 16px; }
+  .dish-head .photo .credit { display: none; }
+  .dish-head h2 { font-size: 24px; margin-bottom: 6px; }
+  .dish-head .meta .chip { font-size: 12px; padding: 4px 9px; }
+  .dish-head > div > p { grid-column: 1 / -1; }
+}
