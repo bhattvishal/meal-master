@@ -325,6 +325,7 @@ async function main() {
       serves: prop(page, 'Serves'),
       prepTime: prop(page, 'Prep time (min)'),
       tags: prop(page, 'Tags') ?? [],
+      prepAhead: prop(page, 'Prep ahead'),
       notionUrl: page.url,
       ...body,
       i18n: dishTranslations(page, bodies),
