@@ -685,6 +685,10 @@ async function load() {
   data = await res.json();
 }
 
+// Short links from WhatsApp buttons: ?m=2026-09-29-breakfast opens that meal.
+const shortLink = new URLSearchParams(location.search).get('m')?.match(/^(\d{4}-\d{2}-\d{2})-([a-z]+)$/);
+if (shortLink) history.replaceState(null, '', `${location.pathname}#/meal/${shortLink[1]}/${shortLink[2]}`);
+
 applyTheme(getTheme());
 applyLanguage();
 addEventListener('hashchange', render);

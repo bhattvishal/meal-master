@@ -42,6 +42,12 @@ jobs:
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_WHATSAPP_DB: ${{ vars.NOTION_WHATSAPP_DB }}
+          # WhatsApp Business (Meta Cloud API). Without these, messages go through CallMeBot.
+          WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
+          WHATSAPP_PHONE_NUMBER_ID: ${{ vars.WHATSAPP_PHONE_NUMBER_ID }}
+          WHATSAPP_LANGUAGE_CODES: ${{ vars.WHATSAPP_LANGUAGE_CODES }}
+          # "photo" (default, template meal_photo) or "text" (template meal_update).
+          WHATSAPP_TEMPLATE_KIND: ${{ vars.WHATSAPP_TEMPLATE_KIND }}
           MEAL_DATE: ${{ inputs.date }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
         run: node scripts/send-whatsapp.mjs

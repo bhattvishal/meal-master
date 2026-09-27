@@ -19,7 +19,7 @@ The app opens on **Today**. Home is one tap away in the tab bar.
 
 ```
 Notion (Dishes + Meal Schedule)
-        │   every 3 hours, on every push to master, or on demand
+        │   every 15 minutes, on every push to master, or on demand
         ▼
 GitHub Action ── scripts/sync-notion.mjs ──► site/data/meals.json + site/images/
         │
@@ -101,19 +101,51 @@ Until the secrets are set, the site uses the snapshot in `site/data/meals.json`.
 
 ## Morning WhatsApp messages
 
-Every day at 6 am India time, `.github/workflows/whatsapp.yml` sends today's meals on WhatsApp. Each person gets one message per meal (breakfast, lunch, snack, dinner), in their chosen language. Each message has the dishes, time, protein, calories, any notes, and a link to the recipe. It uses [CallMeBot](https://www.callmebot.com/blog/free-api-whatsapp-messages/), a free service for personal use.
+Every day at 6 am India time, `.github/workflows/whatsapp.yml` sends today's meals on WhatsApp. Each person gets one message per meal (breakfast, lunch, snack, dinner), in their chosen language, with the dishes, time, protein, calories and a link to the recipe.
 
-To add a person (up to as many as you like):
+It sends through **WhatsApp Business (Meta Cloud API)** when the settings below exist, and falls back to [CallMeBot](https://www.callmebot.com/blog/free-api-whatsapp-messages/) otherwise.
 
-1. On their phone, save CallMeBot's WhatsApp number as a contact. The current number is on the [CallMeBot WhatsApp page](https://www.callmebot.com/blog/free-api-whatsapp-messages/).
-2. From WhatsApp, send it: `I allow callmebot to send me messages`
-3. CallMeBot replies with an API key.
-4. In Notion, open **🥗 Meal Plan → WhatsApp Recipients** and add a row: Name, Phone (with country code, e.g. `+919812345678`), CallMeBot key, Language, and tick **Active**.
-5. In GitHub, add the repository variable `NOTION_WHATSAPP_DB` = `3cae8d845e4f4c81bb8c15073d680295` (once).
+### WhatsApp Business setup
 
-To test, run **Actions → Send today's meals on WhatsApp → Run workflow**. Tick "dry run" to only print the messages in the log.
+1. **Meta app**: at <https://developers.facebook.com>, an app with the WhatsApp use case. Under **WhatsApp → API Setup**, note the **Phone number ID** of the sending number. While using Meta's free test number, add each person in **To → Manage phone number list** (up to 5).
+2. **Permanent token**: in <https://business.facebook.com/settings/system-users>, a system user with the app and the WhatsApp account assigned, and a token that never expires with `whatsapp_business_messaging` and `whatsapp_business_management`.
+3. **Template**: in WhatsApp Manager → Message templates, a **Utility** template named `meal_photo` in English, Hindi and Marathi:
+   - **Header: Image.** Upload any food photo as the sample. Each message sends the main dish's photo from the site, or the Meal Master card (`site/icons/meal-card.png`) when a dish has no photo or it's over WhatsApp's 5 MB limit.
+   - **Body** with six blanks, filled in this order:
 
-GitHub sometimes starts scheduled runs a few minutes late, so messages may arrive shortly after 6 am. CallMeBot is not an official WhatsApp service; if it stops working, the same script can be switched to Meta's WhatsApp Cloud API.
+     | Blank | Value | Example |
+     | --- | --- | --- |
+     | `{{1}}` | Meal | Breakfast |
+     | `{{2}}` | Time | 10:00 |
+     | `{{3}}` | Main dish | Protein Curd Bowl |
+     | `{{4}}` | Sides (or "—") | Seasonal Fruit |
+     | `{{5}}` | Protein in grams | 25 |
+     | `{{6}}` | Calories | 500 |
+
+     English body:
+     ```
+     Today's meal: {{1}} at {{2}}
+     *{{3}}*
+     With: {{4}}
+     Protein {{5}} g · {{6}} kcal
+     Tap below to see the meal and recipe.
+     ```
+   - **Button: Visit website**, text "View meal", **Dynamic** URL `https://bhattvishal.github.io/meal-master/?m={{1}}`, sample `2026-09-29-breakfast`. The app turns `?m=2026-09-29-breakfast` into that meal's page.
+
+   A text-only template without photo or button also works: name it `meal_update`, give it seven body blanks (the six above plus the recipe link as `{{7}}`), and set the GitHub variable `WHATSAPP_TEMPLATE_KIND` = `text`.
+4. **GitHub**: secret `WHATSAPP_TOKEN`, and variables `WHATSAPP_PHONE_NUMBER_ID` and `NOTION_WHATSAPP_DB` = `3cae8d845e4f4c81bb8c15073d680295`. If the template's English was created as "English (US)", also add the variable `WHATSAPP_LANGUAGE_CODES` = `en=en_US`.
+
+Template messages are charged by Meta per message. Check Meta's price list for India.
+
+### Who gets the messages
+
+In Notion, open **🥗 Meal Plan → WhatsApp Recipients** and add a row per person: Name, Phone with country code (e.g. `+919812345678`), Language, and tick **Active**. The **CallMeBot key** column is only needed when sending through CallMeBot.
+
+### Testing
+
+Run **Actions → Send today's meals on WhatsApp → Run workflow** with a date that has meals. Tick "dry run" to print the photo link, template values and button link in the log without sending. The log says which service it used ("sending with WhatsApp Business …").
+
+GitHub sometimes starts scheduled runs a few minutes late, so messages may arrive shortly after 6 am.
 
 ## Install it on your Android tablet
 
@@ -148,7 +180,7 @@ meal-master/
 ├── .github/workflows/deploy.yml   Sync from Notion and publish to GitHub Pages
 ├── .github/workflows/whatsapp.yml Morning WhatsApp messages
 ├── scripts/sync-notion.mjs        Notion → site/data/meals.json and photos
-├── scripts/send-whatsapp.mjs      Sends today's meals through CallMeBot
+├── scripts/send-whatsapp.mjs      Sends today's meals (WhatsApp Business or CallMeBot)
 ├── site/                          The published web app
 │   ├── index.html
 │   ├── app.js                     Pages and navigation
