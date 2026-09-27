@@ -4,11 +4,14 @@
 //
 // Two ways to send, picked automatically:
 //   - WhatsApp Business (Meta Cloud API), when WHATSAPP_TOKEN and WHATSAPP_PHONE_NUMBER_ID are set.
-//     Uses the approved template WHATSAPP_TEMPLATE (default "meal_update") in each person's language.
+//     Uses an approved template in each person's language:
+//       "photo" kind (default template "meal_photo"): dish photo header, six body blanks, "View meal" button.
+//       "text" kind (default template "meal_update"): seven body blanks, the last one the recipe link.
 //   - CallMeBot otherwise, using each person's "CallMeBot key" from Notion.
 //
 // Env: NOTION_TOKEN, NOTION_WHATSAPP_DB
-// Optional: WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_TEMPLATE, GRAPH_API_VERSION,
+// Optional: WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_TEMPLATE_KIND (photo|text), WHATSAPP_TEMPLATE,
+//           GRAPH_API_VERSION,
 //           WHATSAPP_LANGUAGE_CODES (e.g. "en=en_US" if the template's English is "English (US)"),
 //           SITE_URL, MEAL_DATE (YYYY-MM-DD, default today in India), DRY_RUN=1 to print instead of send.
 
@@ -19,7 +22,8 @@ import { setLang, locale, t, unit, dishText } from '../site/i18n.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const { NOTION_TOKEN, NOTION_WHATSAPP_DB, WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID } = process.env;
-const TEMPLATE = process.env.WHATSAPP_TEMPLATE || 'meal_update';
+const TEMPLATE_KIND = process.env.WHATSAPP_TEMPLATE_KIND === 'text' ? 'text' : 'photo';
+const TEMPLATE = process.env.WHATSAPP_TEMPLATE || (TEMPLATE_KIND === 'photo' ? 'meal_photo' : 'meal_update');
 const GRAPH_API_VERSION = process.env.GRAPH_API_VERSION || 'v26.0';
 const SITE_URL = (process.env.SITE_URL || 'https://bhattvishal.github.io/meal-master/').replace(/\/?$/, '/');
 const DRY_RUN = process.env.DRY_RUN === '1';
@@ -34,6 +38,9 @@ const TEMPLATE_LANGS = Object.fromEntries(
 );
 const SLOT_ORDER = { breakfast: 0, lunch: 1, snack: 2, dinner: 3 };
 const SLOT_EMOJI = { breakfast: '🌅', lunch: '🍱', snack: '🥜', dinner: '🌙' };
+
+const FALLBACK_IMAGE = 'icons/meal-card.png';
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // WhatsApp's limit for image headers.
 
 const indiaToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 
@@ -80,6 +87,8 @@ function mealFacts(meal, dishes, date) {
     kcal: total('calories'),
     notes: meal.notes,
     url: `${SITE_URL}#/meal/${date}/${meal.meal}`,
+    link: `${date}-${meal.meal}`,
+    mainId: main.id,
   };
 }
 
@@ -99,6 +108,35 @@ function messageText(f) {
   return lines.filter((l) => l !== null).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+// Photo links come from the live site, which has the images the deploy downloaded. A photo is only
+// used if it is reachable and small enough for WhatsApp; otherwise the Meal Master card is sent.
+let livePhotos = null;
+const checkedImages = new Map();
+async function photoUrl(dishId) {
+  if (!livePhotos) {
+    livePhotos = {};
+    try {
+      const res = await fetch(`${SITE_URL}data/meals.json`, { cache: 'no-store' });
+      if (res.ok) for (const d of Object.values((await res.json()).dishes ?? {})) if (d.photo?.src) livePhotos[d.id] = d.photo.src;
+    } catch (err) {
+      console.warn(`Could not read photos from the live site: ${err.message}`);
+    }
+  }
+  const src = livePhotos[dishId];
+  if (!src) return `${SITE_URL}${FALLBACK_IMAGE}`;
+  const url = `${SITE_URL}${src}`;
+  if (!checkedImages.has(url)) {
+    let ok = false;
+    try {
+      const res = await fetch(url, { method: 'HEAD' });
+      const size = Number(res.headers.get('content-length') || 0);
+      ok = res.ok && /^image\/(jpeg|png)/.test(res.headers.get('content-type') || '') && size <= MAX_IMAGE_BYTES;
+    } catch { /* unreachable: use the card */ }
+    checkedImages.set(url, ok);
+  }
+  return checkedImages.get(url) ? url : `${SITE_URL}${FALLBACK_IMAGE}`;
+}
+
 // Values for the {{1}}–{{7}} blanks of the "meal_update" template. WhatsApp rejects blanks that are
 // empty or contain line breaks, tabs or more than four spaces in a row.
 function templateParams(f) {
@@ -106,7 +144,21 @@ function templateParams(f) {
   return [f.slot, f.time, f.main, f.sides.join(', '), f.protein, f.kcal, f.url].map(clean);
 }
 
-async function sendCloudApi(to, params) {
+// Values for the "meal_photo" template: body blanks {{1}}–{{6}} (meal, time, main dish, sides, protein,
+// calories), the header image, and the button's link suffix.
+async function photoTemplate(f) {
+  return {
+    body: templateParams(f).slice(0, 6),
+    image: await photoUrl(f.mainId),
+    button: f.link,
+  };
+}
+
+async function sendCloudApi(to, message) {
+  const components = [];
+  if (message.image) components.push({ type: 'header', parameters: [{ type: 'image', image: { link: message.image } }] });
+  components.push({ type: 'body', parameters: message.body.map((text) => ({ type: 'text', text })) });
+  if (message.button) components.push({ type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: message.button }] });
   const res = await fetch(`https://graph.facebook.com/${GRAPH_API_VERSION}/${WHATSAPP_PHONE_NUMBER_ID}/messages`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
@@ -117,7 +169,7 @@ async function sendCloudApi(to, params) {
       template: {
         name: TEMPLATE,
         language: { code: TEMPLATE_LANGS[to.lang] ?? to.lang },
-        components: [{ type: 'body', parameters: params.map((text) => ({ type: 'text', text })) }],
+        components,
       },
     }),
   });
@@ -137,9 +189,16 @@ async function sendCallMeBot(to, text) {
 
 async function send(to, facts) {
   if (USE_CLOUD_API) {
-    const params = templateParams(facts);
-    if (DRY_RUN) return console.log(`--- to ${to.name} (${to.lang}), template ${TEMPLATE} ---\n${params.map((p, i) => `{{${i + 1}}} ${p}`).join('\n')}\n`);
-    return sendCloudApi(to, params);
+    const message = TEMPLATE_KIND === 'photo' ? await photoTemplate(facts) : { body: templateParams(facts) };
+    if (DRY_RUN) {
+      return console.log([
+        `--- to ${to.name} (${to.lang}), template ${TEMPLATE} ---`,
+        message.image ? `image  ${message.image}` : null,
+        ...message.body.map((p, i) => `{{${i + 1}}} ${p}`),
+        message.button ? `button ${SITE_URL}?m=${message.button}` : null,
+      ].filter(Boolean).join('\n') + '\n');
+    }
+    return sendCloudApi(to, message);
   }
   const text = messageText(facts);
   if (DRY_RUN) return console.log(`--- to ${to.name} (${to.lang}) ---\n${text}\n`);

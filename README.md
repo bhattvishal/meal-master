@@ -109,27 +109,30 @@ It sends through **WhatsApp Business (Meta Cloud API)** when the settings below 
 
 1. **Meta app**: at <https://developers.facebook.com>, an app with the WhatsApp use case. Under **WhatsApp → API Setup**, note the **Phone number ID** of the sending number. While using Meta's free test number, add each person in **To → Manage phone number list** (up to 5).
 2. **Permanent token**: in <https://business.facebook.com/settings/system-users>, a system user with the app and the WhatsApp account assigned, and a token that never expires with `whatsapp_business_messaging` and `whatsapp_business_management`.
-3. **Template**: in WhatsApp Manager → Message templates, a **Utility** template named `meal_update` in English, Hindi and Marathi. Its body has seven blanks, filled in this order:
+3. **Template**: in WhatsApp Manager → Message templates, a **Utility** template named `meal_photo` in English, Hindi and Marathi:
+   - **Header: Image.** Upload any food photo as the sample. Each message sends the main dish's photo from the site, or the Meal Master card (`site/icons/meal-card.png`) when a dish has no photo or it's over WhatsApp's 5 MB limit.
+   - **Body** with six blanks, filled in this order:
 
-   | Blank | Value | Example |
-   | --- | --- | --- |
-   | `{{1}}` | Meal | Breakfast |
-   | `{{2}}` | Time | 10:00 |
-   | `{{3}}` | Main dish | Protein Curd Bowl |
-   | `{{4}}` | Sides (or "—") | Seasonal Fruit |
-   | `{{5}}` | Protein in grams | 25 |
-   | `{{6}}` | Calories | 500 |
-   | `{{7}}` | Recipe link | `https://bhattvishal.github.io/meal-master/#/meal/2026-09-29/breakfast` |
+     | Blank | Value | Example |
+     | --- | --- | --- |
+     | `{{1}}` | Meal | Breakfast |
+     | `{{2}}` | Time | 10:00 |
+     | `{{3}}` | Main dish | Protein Curd Bowl |
+     | `{{4}}` | Sides (or "—") | Seasonal Fruit |
+     | `{{5}}` | Protein in grams | 25 |
+     | `{{6}}` | Calories | 500 |
 
-   English body used:
-   ```
-   Today's meal: {{1}} at {{2}}
-   *{{3}}*
-   With: {{4}}
-   Protein {{5}} g · {{6}} kcal
-   Recipe: {{7}}
-   Enjoy your meal!
-   ```
+     English body:
+     ```
+     Today's meal: {{1}} at {{2}}
+     *{{3}}*
+     With: {{4}}
+     Protein {{5}} g · {{6}} kcal
+     Tap below to see the meal and recipe.
+     ```
+   - **Button: Visit website**, text "View meal", **Dynamic** URL `https://bhattvishal.github.io/meal-master/?m={{1}}`, sample `2026-09-29-breakfast`. The app turns `?m=2026-09-29-breakfast` into that meal's page.
+
+   A text-only template without photo or button also works: name it `meal_update`, give it seven body blanks (the six above plus the recipe link as `{{7}}`), and set the GitHub variable `WHATSAPP_TEMPLATE_KIND` = `text`.
 4. **GitHub**: secret `WHATSAPP_TOKEN`, and variables `WHATSAPP_PHONE_NUMBER_ID` and `NOTION_WHATSAPP_DB` = `3cae8d845e4f4c81bb8c15073d680295`. If the template's English was created as "English (US)", also add the variable `WHATSAPP_LANGUAGE_CODES` = `en=en_US`.
 
 Template messages are charged by Meta per message. Check Meta's price list for India.
@@ -140,7 +143,7 @@ In Notion, open **🥗 Meal Plan → WhatsApp Recipients** and add a row per per
 
 ### Testing
 
-Run **Actions → Send today's meals on WhatsApp → Run workflow** with a date that has meals. Tick "dry run" to print the template values in the log without sending. The log says which service it used ("sending with WhatsApp Business …").
+Run **Actions → Send today's meals on WhatsApp → Run workflow** with a date that has meals. Tick "dry run" to print the photo link, template values and button link in the log without sending. The log says which service it used ("sending with WhatsApp Business …").
 
 GitHub sometimes starts scheduled runs a few minutes late, so messages may arrive shortly after 6 am.
 
