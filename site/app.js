@@ -6,7 +6,7 @@
 //   #/shop[/YYYY-MM-DD/N]    grocery list for N days from that date
 //   #/settings               language, household size and appearance
 
-import { getPeople, setPeople, factorFor, scaleLine, buildGroceries } from './kitchen.js';
+import { getPeople, setPeople, factorFor, scaleLine, buildGroceries, getGoals, setGoal, goalProgress, DEFAULT_GOALS } from './kitchen.js';
 import { LANGS, getLang, setLang, locale, t, tag, unit, grocery, amount, dishText } from './i18n.js';
 
 const SLOTS = ['breakfast', 'lunch', 'dinner'];
@@ -132,13 +132,27 @@ function macroBars(n) {
     </div>`).join('')}</div>`;
 }
 
-function statTiles(n) {
+// Day totals; with goals, each tile also shows how much of the daily goal the day covers.
+function statTiles(n, withGoals = false) {
   const tiles = [
     { k: 'calories', u: kcal(), c: 'var(--ink-3)' },
     ...MACROS.map((m) => ({ k: m.key, u: g(), c: `var(--${m.key})` })),
   ];
-  return `<div class="totals">${tiles.map((tl, i) => `
-    <div class="stat rise" style="--c:${tl.c};--i:${i}"><b>${show(n[tl.k])}${n[tl.k] == null ? '' : `<small style="font-size:14px"> ${tl.u}</small>`}</b><span>${t(tl.k)}</span></div>`).join('')}</div>`;
+  return `<div class="totals">${tiles.map((tl, i) => {
+    const p = withGoals ? goalProgress(tl.k, n[tl.k]) : null;
+    const goal = p ? `
+      <span class="goal-bar"><i style="--w:${Math.min(p.pct, 100)}%"></i></span>
+      <span class="goal-text"><span class="full">${esc(t('goalOf', { pct: p.pct, goal: p.goal }))}</span><span class="short">${p.pct}%</span>${p.status === 'met' ? ' ✓' : p.status === 'over' ? ' ▲' : ''}</span>` : '';
+    return `
+    <div class="stat rise${p?.status ? ` ${p.status}` : ''}" style="--c:${tl.c};--i:${i}"><b>${show(n[tl.k])}${n[tl.k] == null ? '' : `<small style="font-size:14px"> ${tl.u}</small>`}</b><span>${t(tl.k)}</span>${goal}</div>`;
+  }).join('')}</div>`;
+}
+
+// A small ring showing a day's protein against the goal.
+function proteinRing(protein) {
+  const p = goalProgress('protein', protein);
+  if (!p) return '';
+  return `<span class="mini-ring${p.status ? ` ${p.status}` : ''}" style="--p:${Math.min(p.pct, 100)}" title="${esc(t('proteinGoalLine', { pct: p.pct, goal: p.goal }))}"><b>${p.pct}%</b></span>`;
 }
 
 const chevron = (dir) => `<svg viewBox="0 0 24 24"><path d="${dir === 'left' ? 'M15 5l-7 7 7 7' : 'M9 5l7 7-7 7'}"/></svg>`;
@@ -161,19 +175,28 @@ function homePage() {
   const next = upNext();
   const planned = todays.filter((x) => x.meal);
 
-  // Ring: one arc per meal slot, coloured when that meal is planned.
+  // Ring: fills towards the daily protein goal, one arc per meal in that meal's colour.
   const C = 2 * Math.PI * 46;
-  const arc = C / 3 - 8;
-  const segs = todays.map((x, i) => {
-    const cls = x.meal ? `seg meal-${x.slot}` : 'track';
-    return `<circle class="${cls}" cx="50" cy="50" r="46" style="--len:${arc};--i:${i};${x.meal ? '' : `stroke-dasharray:${arc} 999;`}stroke-dashoffset:${-(i * (arc + 8) + 4)}"/>`;
-  }).join('');
+  const proteinGoal = getGoals().protein;
+  const order = { breakfast: 0, lunch: 1, snack: 2, dinner: 3 };
+  let used = 0;
+  const segs = `<circle class="track" cx="50" cy="50" r="46"/>` + mealsOn(date)
+    .slice()
+    .sort((a, b) => (order[a.meal] ?? 9) - (order[b.meal] ?? 9))
+    .map((m, i) => {
+      const protein = sum(dishesOf(m)).protein ?? 0;
+      const len = Math.min(C - used, (protein / proteinGoal) * C);
+      if (len <= 0) return '';
+      const seg = `<circle class="seg meal-${m.meal}" cx="50" cy="50" r="46" style="--len:${Math.max(0, len - 1.5)};--i:${i};stroke-dashoffset:${-used}"/>`;
+      used += len;
+      return seg;
+    }).join('');
 
   const orbitEmoji = (dishes.length ? dishes.map((d) => d.emoji || '🍽️') : ['🥗', '🍳', '🫓', '🥒', '🍢', '🥜']).slice(0, 8);
   const orbit = orbitEmoji.map((e, i) => `<div class="food" style="--a:${(360 / orbitEmoji.length) * i}deg;--i:${i}"><span>${e}</span></div>`).join('');
 
   const centre = totals.protein != null
-    ? `<div class="big" data-count="${totals.protein}">0</div><div class="unit">${t('proteinToday')}</div>`
+    ? `<div class="big" data-count="${totals.protein}">0</div><div class="unit">${t('proteinToday')}</div><div class="unit goal-line">${esc(t('proteinGoalLine', { pct: Math.round((totals.protein / proteinGoal) * 100), goal: proteinGoal }))}</div>`
     : `<div class="big">${planned.length}</div><div class="unit">${t('mealsPlannedToday')}</div>`;
 
   const nextDish = next && mainDish(next);
@@ -265,7 +288,7 @@ function dayPage(date) {
         <a class="icon-btn" href="#/day/${addDays(date, 1)}" aria-label="${t('nextDay')}">${chevron('right')}</a>
       </div>
     </header>
-    ${statTiles(sum(dishes))}
+    ${statTiles(sum(dishes), true)}
     <div class="meals">${SLOTS.map((slot, i) => card(slot, mealFor(date, slot), i)).join('')}</div>`;
 }
 
@@ -396,7 +419,7 @@ function weekPage(date) {
       ${days.map((d, i) => {
         const dayProtein = sum(mealsOn(d).flatMap(dishesOf)).protein;
         return `<div class="day-row rise${d === today() ? ' today' : ''}" style="--i:${i + 3}">
-          <a class="day-label" href="#/day/${d}"><span class="dow">${fmt(d, { weekday: 'short' })} ${fmt(d, { day: 'numeric' })}</span><span class="date">${dayProtein != null ? t('gProteinDay', { n: dayProtein }) : d === today() ? t('today') : ''}</span></a>
+          <a class="day-label" href="#/day/${d}"><span class="dow">${fmt(d, { weekday: 'short' })} ${fmt(d, { day: 'numeric' })}</span><span class="date">${dayProtein != null ? `${proteinRing(dayProtein)}<span class="grams">${esc(t('gProteinDay', { n: dayProtein }))}</span>` : d === today() ? t('today') : ''}</span></a>
           <div class="slots">${SLOTS.map((slot) => {
             const meal = mealFor(d, slot);
             const dish = mainDish(meal);
@@ -477,13 +500,21 @@ function settingsPage() {
         <div class="scale-row">${peopleControl(getPeople())}<span class="muted">${esc(peopleText(getPeople()))}</span></div>
         <p class="muted">${t('householdHelp')}</p>
       </section>
+      <section class="panel rise goals-panel" style="--i:3">
+        <h2>🎯 ${t('dailyGoals')}</h2>
+        <div class="goal-fields">${Object.keys(DEFAULT_GOALS).map((k) => `
+          <label class="goal-field" style="--c:var(--${k === 'calories' ? 'ink-3' : k})"><span>${t(k)} <small>(${k === 'calories' ? kcal() : g()})</small></span>
+            <input type="number" inputmode="numeric" min="1" step="${k === 'calories' ? 50 : 1}" value="${getGoals()[k]}" data-goal="${k}"></label>`).join('')}
+        </div>
+        <p class="muted">${t('dailyGoalsHelp')} <button class="link-btn" data-reset-goals>${t('resetGoals')}</button></p>
+      </section>
       <section class="panel rise" style="--i:3">
         <h2>🎨 ${t('appearance')}</h2>
         <div class="choices">${option('data-theme-choice', 'auto', theme, t('system'))}${option('data-theme-choice', 'light', theme, `☀️ ${t('light')}`)}${option('data-theme-choice', 'dark', theme, `🌙 ${t('dark')}`)}</div>
       </section>
       <section class="panel rise" style="--i:4">
         <h2>💬 ${t('whatsapp')}</h2>
-        <p class="muted" style="margin-top:0">${t('whatsappHelp')}</p>
+        <p class="muted wa-help" style="margin-top:0">${t('whatsappHelp')}</p>
         ${data.notionWhatsappUrl ? `<p><a class="btn" href="${esc(data.notionWhatsappUrl)}" target="_blank" rel="noopener">${t('whatsappEdit')}</a></p>` : ''}
       </section>
       <section class="panel rise" style="--i:5">
@@ -613,6 +644,11 @@ app.addEventListener('click', async (e) => {
     rerender();
     return;
   }
+  if (e.target.closest('[data-reset-goals]')) {
+    try { localStorage.removeItem('goals'); } catch { /* storage unavailable */ }
+    rerender();
+    return;
+  }
   const themeBtn = e.target.closest('[data-theme-choice]');
   if (themeBtn) {
     const theme = themeBtn.dataset.themeChoice;
@@ -645,6 +681,11 @@ app.addEventListener('click', async (e) => {
 });
 
 app.addEventListener('change', (e) => {
+  if (e.target.matches('[data-goal]')) {
+    setGoal(e.target.dataset.goal, Number(e.target.value));
+    e.target.value = getGoals()[e.target.dataset.goal];
+    return;
+  }
   if (e.target.matches('[data-shop]')) {
     const list = app.querySelector('[data-list]');
     const keys = [...list.querySelectorAll('[data-shop]')].filter((c) => c.checked).map((c) => c.dataset.shop);

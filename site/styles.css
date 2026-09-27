@@ -468,7 +468,10 @@ body.fit .meal-card .sides .chip { flex: none; max-width: 70%; white-space: nowr
 body.fit .macro-line { gap: 12px; flex-wrap: wrap; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
 body.fit .macro-line span { color: var(--ink); }
 body.fit .meal-card.empty .photo-frame, body.fit .meal-card.empty > .photo { flex: 1 1 auto; min-height: 60px; aspect-ratio: auto; }
-@media (max-height: 820px) {
+/* Nutrient bars stay on the cards; only very short landscape screens switch to a one-line summary. */
+body.fit .meal-card .macros { gap: clamp(4px, .7vh, 8px); }
+body.fit .meal-card .macro { font-size: clamp(12px, .5vw + .8vh, 14px); }
+@media (orientation: landscape) and (max-height: 640px) {
   body.fit .meal-card .macros { display: none; }
   body.fit .macro-line { display: flex; }
 }
@@ -513,8 +516,7 @@ body.fit .settings .panel:last-child { grid-column: 1 / -1; }
   body.fit .meal-card, body.fit .meal-card.empty { flex-direction: row; align-items: stretch; }
   body.fit .meal-card .photo-frame, body.fit .meal-card.empty > .photo { flex: 0 0 40%; width: 40%; min-height: 0; }
   body.fit .meal-card .body { flex: 1 1 auto; min-width: 0; justify-content: center; overflow: hidden; }
-  body.fit .meal-card .macros { display: none; }
-  body.fit .macro-line { display: flex; gap: 10px; font-size: 13px; }
+  body.fit .meal-card .body { gap: clamp(4px, .8vh, 10px); }
   body.fit .meal-card .cta { margin-top: 0; font-size: 14px; }
   body.fit .meal-card .photo-frame .slot-pill { left: 10px; top: 10px; }
   body.fit .meal-card .photo-frame .time-pill { top: auto; bottom: 10px; right: auto; left: 10px; }
@@ -551,4 +553,66 @@ body.fit .settings .panel:last-child { grid-column: 1 / -1; }
   body.fit .settings .choice { padding: 8px 14px; font-size: 15px; border-radius: 12px; }
   body.fit .settings .btn { padding: 8px 14px; font-size: 13px; }
   body.fit .settings .people .icon-btn.small { width: 30px; height: 30px; }
+}
+
+/* Phones: one-line nutrient summary instead of bars */
+@media (max-width: 599px) {
+  body.fit .meal-card .macros { display: none; }
+  body.fit .macro-line { display: flex; gap: 10px; font-size: 13px; }
+}
+
+/* ---------- Daily goals ---------- */
+.goal-bar { display: block; height: 5px; margin-top: clamp(4px, .8vh, 8px); border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.goal-bar i { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--c); animation: fill 1s cubic-bezier(.4, 0, .2, 1) .3s forwards; }
+.goal-text { display: block; margin-top: 3px; font-size: 12px; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+body.fit .goal-text { font-size: clamp(10px, .5vw + .5vh, 12px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat.met { background: color-mix(in srgb, var(--fibre) 12%, var(--surface)); }
+.stat .goal-text > span, body.fit .stat .goal-text > span { display: inline; font: inherit; color: inherit; }
+.stat .goal-text > span.short, body.fit .stat .goal-text > span.short { display: none; }
+@media (max-width: 599px) { .stat .goal-text > span.full, body.fit .stat .goal-text > span.full { display: none; } .stat .goal-text > span.short, body.fit .stat .goal-text > span.short { display: inline; } }
+.stat.met .goal-text { color: color-mix(in srgb, var(--fibre) 80%, var(--ink)); }
+.stat.over { background: color-mix(in srgb, var(--carbs) 16%, var(--surface)); }
+.stat.over .goal-text { color: color-mix(in srgb, #c77700 85%, var(--ink)); }
+.stat.over .goal-bar i { background: #e08a00; }
+
+.plate-center .goal-line { margin-top: 4px; font-size: 12px; color: var(--ink-3); }
+body.fit .plate-center .goal-line { font-size: clamp(10px, 3cqw, 13px); max-width: 56cqw; }
+
+.day-row .date { display: inline-flex; align-items: center; gap: 6px; }
+.mini-ring {
+  --size: 30px; width: var(--size); height: var(--size); flex: none; border-radius: 50%; display: grid; place-items: center;
+  background: conic-gradient(var(--protein) calc(var(--p) * 1%), var(--surface-2) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4px));
+  position: relative;
+}
+.mini-ring.met { background: conic-gradient(var(--fibre) 100%, var(--fibre) 0); }
+.mini-ring b { display: none; }
+.day-row .date .grams { font-size: 12px; }
+@media (orientation: portrait), (max-width: 699px) { body.fit .day-row .date { flex-direction: column; gap: 2px; } }
+
+.goal-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.goal-field { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; gap: 4px; padding: 8px 12px; border-radius: 14px; background: var(--surface-2); border-left: 4px solid var(--c); }
+.goal-field > span { font-size: 13px; font-weight: 700; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.goal-field > span small { font-weight: 600; color: var(--ink-3); }
+.goal-field input { width: 100%; min-width: 0; font: 700 18px var(--sans); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; }
+.link-btn { color: var(--accent); font-weight: 700; text-decoration: underline; font-size: inherit; }
+body.fit .settings .goals-panel { grid-column: 1 / -1; }
+@media (max-width: 599px) {
+  .goal-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .goal-field { padding: 6px 8px; }
+  .goal-field input { font-size: 15px; padding: 4px 6px; }
+}
+/* Settings layout with the goals panel: three across on wide screens, goals on its own row */
+@media (orientation: landscape) and (min-width: 700px) {
+  body.fit .settings { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  body.fit .settings .goals-panel { order: 4; }
+  body.fit .settings .panel:nth-last-child(2) { order: 5; grid-column: span 2; }
+  body.fit .settings .panel:last-child { order: 6; grid-column: span 1; }
+  body.fit .goal-fields { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+@media (max-width: 599px) {
+  body.fit .settings .panel > p.muted:not(:first-of-type), body.fit .settings .panel > h2 + .choices + p, body.fit .settings .panel > .scale-row + p { display: none; }
+  body.fit .settings .goals-panel > p.muted { font-size: 11px; }
+  body.fit .settings .wa-help { display: none; }
 }

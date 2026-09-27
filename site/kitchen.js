@@ -79,7 +79,7 @@ const CATEGORIES = [
   ['Dairy', /\b(paneer|curd|yogurt|yoghurt|ghee|milk|cream|butter|cheese|buttermilk)/],
   ['Pulses, grains & flours', /\b(dal|rajma|chhole|chole|chickpea|chana|beans|lentil|soya|besan|atta|flour|jowar|bajra|ragi|oats|rice|poha|roti|bread|quinoa|urad|moong(?! sprouts))/],
   ['Vegetables & herbs', /\b(onion|tomato|cucumber|potato|capsicum|spinach|palak|bhindi|okra|chilli|ginger|garlic|coriander|mint|curry leaves|lemon|lime|vegetable|drumstick|pumpkin|carrot|brinjal|shallot|sprouts|coconut|peas|cauliflower|cabbage|beetroot|methi leaves)/],
-  ['Fruit', /\b(banana|fruit|apple|papaya|guava|pomegranate|mango|orange|berries|grapes)/],
+  ['Fruit', /\b(banana|fruit|apple|pineapple|papaya|guava|pomegranate|mango|orange|mosambi|sweet lime|berries|grapes)/],
 ];
 const categoryOf = (name) => CATEGORIES.find(([, re]) => re.test(name))?.[0] ?? 'Other';
 
@@ -97,7 +97,7 @@ function itemName(item) {
     .replace(/^(a few|some|few) /, '')
     .split(' or ')[0]
     .replace(/ (to taste|to finish|to serve|to garnish|to grease .*|for .*|as needed|per .*)$/, '')
-    .replace(/\b(large|medium|small|big|fresh|thick|very|finely|roughly|thinly|chopped|sliced|grated|crumbled|cubed|whisked|soaked|boiled|mashed|cooked|dried|roasted|optional)\b/g, '')
+    .replace(/\b(large|medium|small|big|fresh|ripe|thick|very|finely|roughly|thinly|chopped|sliced|grated|crumbled|cubed|whisked|soaked|boiled|mashed|cooked|dried|roasted|optional)\b/g, '')
     .replace(/\s+/g, ' ')
     .trim();
   const words = name.split(' ');
@@ -126,6 +126,16 @@ export function buildGroceries(meals, dishes, people) {
       const dish = dishes[id];
       if (!dish) continue;
       const factor = factorFor(dish, people);
+      // A dish with no ingredient list (a banana, an apple) is itself the thing to buy.
+      if (!(dish.sections ?? []).some((sec) => sec.kind === 'list')) {
+        const name = itemName(dish.name);
+        const key = `${name}|#`;
+        const entry = items.get(key) ?? { key, name, unit: null, qty: 0, counted: true, dishes: new Set() };
+        entry.qty += factor;
+        entry.dishes.add(dish.id);
+        items.set(key, entry);
+        continue;
+      }
       for (const section of dish.sections ?? []) {
         if (section.kind !== 'list') continue;
         for (const raw of section.items) {
@@ -181,4 +191,36 @@ export function buildGroceries(meals, dishes, people) {
   return display
     .filter((c) => grouped.has(c) && order.includes(c))
     .map((category) => ({ category, items: grouped.get(category).sort((a, b) => a.name.localeCompare(b.name)) }));
+}
+
+// ---------- daily goals ----------
+
+// Per person per day. Protein and fibre are targets to reach; the rest are limits to stay under.
+export const DEFAULT_GOALS = { calories: 2000, protein: 90, carbs: 250, fat: 65, fibre: 30 };
+export const GOAL_KIND = { calories: 'limit', protein: 'target', carbs: 'limit', fat: 'limit', fibre: 'target' };
+const GOALS_KEY = 'goals';
+
+export function getGoals() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(GOALS_KEY) ?? '{}');
+    return Object.fromEntries(Object.entries(DEFAULT_GOALS).map(([k, v]) => [k, saved[k] > 0 ? saved[k] : v]));
+  } catch {
+    return { ...DEFAULT_GOALS };
+  }
+}
+export function setGoal(key, value) {
+  if (!(key in DEFAULT_GOALS)) return;
+  const goals = getGoals();
+  goals[key] = value > 0 ? Math.round(value) : DEFAULT_GOALS[key];
+  try { localStorage.setItem(GOALS_KEY, JSON.stringify(goals)); } catch { /* storage unavailable */ }
+}
+
+// How far a total is towards its goal: { pct, status } where status is 'met' (target reached),
+// 'over' (limit passed) or ''.
+export function goalProgress(key, value) {
+  const goal = getGoals()[key];
+  if (value == null || !goal) return null;
+  const pct = Math.round((value / goal) * 100);
+  const status = GOAL_KIND[key] === 'target' ? (pct >= 100 ? 'met' : '') : (pct > 100 ? 'over' : '');
+  return { pct, goal, status };
 }
