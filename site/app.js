@@ -215,8 +215,7 @@ function homePage() {
           <div class="name" style="margin-top:8px">${dish ? esc(name(dish)) : `<span class="muted">${t('notPlanned')}</span>`}</div></div>
         </a>`;
       }).join('')}
-    </div>
-    ${footer()}`;
+    </div>`;
 }
 
 function dayPage(date) {
@@ -235,36 +234,39 @@ function dayPage(date) {
     const n = sum(all);
     const sides = all.slice(1);
     return `<a class="meal-card meal-${slot} rise" style="--i:${i + 2}" href="#/meal/${date}/${slot}">
-      <div class="photo-frame" style="position:relative">${photo(dish, slot)}
-        <span class="pill" style="position:absolute;left:14px;top:14px"><span class="dot"></span>${slotName(slot)}</span>
-        <span class="pill" style="position:absolute;right:14px;top:14px">🕒 ${mealTime(meal, slot)}</span>
+      <div class="photo-frame">${photo(dish, slot)}
+        <span class="pill slot-pill"><span class="dot"></span>${slotName(slot)}</span>
+        <span class="pill time-pill">🕒 ${mealTime(meal, slot)}</span>
       </div>
       <div class="body">
         <h3>${esc(name(dish))}</h3>
         ${meal.repeat || meal.draft ? `<div class="sides">${badges(meal)}</div>` : ''}
         ${sides.length ? `<div class="sides"><span class="with">${t('with')}</span>${sides.map((s) => `<span class="chip">${s.emoji ?? ''} ${esc(name(s))}</span>`).join('')}</div>` : ''}
         ${macroBars(n)}
+        <div class="macro-line"><span style="--c:var(--protein)">💪 ${show(n.protein, ` ${g()}`)}</span><span style="--c:var(--carbs)">🌾 ${show(n.carbs, ` ${g()}`)}</span><span style="--c:var(--fat)">🧈 ${show(n.fat, ` ${g()}`)}</span></div>
         <div class="cta"><span>${show(n.calories, ` ${kcal()}`)}</span><span>${t('viewRecipe')}</span></div>
       </div>
     </a>`;
   };
 
+  // Snacks and other extra meals sit as small links in the header so the page fits one screen.
+  const extras = extra.map((m) => {
+    const d = mainDish(m);
+    return `<a class="chip extra meal-${m.meal}" href="#/meal/${date}/${m.meal}"><span class="dot"></span>${slotName(m.meal)} · ${esc(d ? name(d) : m.name)}</a>`;
+  }).join('');
+
   return `
     <header class="page-head rise">
       <div class="titles"><div class="eyebrow">${esc(relDay(date))}</div><h1>${fmt(date, { weekday: 'long', day: 'numeric', month: 'long' })}</h1></div>
+      ${extras ? `<div class="extras">${extras}</div>` : ''}
       <div class="nav">
+        ${date !== today() ? `<a class="btn small" href="#/day">${t('jumpToday')}</a>` : ''}
         <a class="icon-btn" href="#/day/${addDays(date, -1)}" aria-label="${t('prevDay')}">${chevron('left')}</a>
         <a class="icon-btn" href="#/day/${addDays(date, 1)}" aria-label="${t('nextDay')}">${chevron('right')}</a>
       </div>
     </header>
     ${statTiles(sum(dishes))}
-    <div class="meals">${SLOTS.map((slot, i) => card(slot, mealFor(date, slot), i)).join('')}</div>
-    ${extra.length ? `<div class="section-title"><h2>${t('alsoPlanned')}</h2></div><div class="timeline">${extra.map((m, i) => {
-      const d = mainDish(m);
-      return `<a class="tl-card meal-${m.meal} rise" style="--i:${i + 5}" href="#/meal/${date}/${m.meal}">${photo(d, m.meal)}<div><span class="pill"><span class="dot"></span>${slotName(m.meal)}</span><div class="name" style="margin-top:8px">${esc(d ? name(d) : m.name)}</div></div></a>`;
-    }).join('')}</div>` : ''}
-    ${date !== today() ? `<p style="text-align:center;margin-top:28px"><a class="btn" href="#/day">${t('jumpToday')}</a></p>` : ''}
-    ${footer()}`;
+    <div class="meals">${SLOTS.map((slot, i) => card(slot, mealFor(date, slot), i)).join('')}</div>`;
 }
 
 function mealPage(date, slot, selectedId) {
@@ -403,8 +405,7 @@ function weekPage(date) {
           }).join('')}</div>
         </div>`;
       }).join('')}
-    </div>
-    ${footer()}`;
+    </div>`;
 }
 
 function shopPage(from, days) {
@@ -533,16 +534,16 @@ function applyLanguage() {
 function route() {
   const [page, a, b] = location.hash.replace(/^#\/?/, '').split('/');
   switch (page) {
-    case 'home': return { tab: 'home', render: homePage };
-    case 'week': return { tab: 'week', render: () => weekPage(isDate(a) ? a : today()), swipe: (dir) => `#/week/${addDays(weekStart(isDate(a) ? a : today()), dir * 7)}` };
+    case 'home': return { tab: 'home', fit: true, render: homePage };
+    case 'week': return { tab: 'week', fit: true, render: () => weekPage(isDate(a) ? a : today()), swipe: (dir) => `#/week/${addDays(weekStart(isDate(a) ? a : today()), dir * 7)}` };
     case 'shop': {
       const from = isDate(a) ? a : today();
       const days = Math.min(14, Math.max(1, Number(b) || 7));
       return { tab: 'shop', render: () => shopPage(from, days), swipe: (dir) => `#/shop/${addDays(from, dir * days)}/${days}` };
     }
-    case 'settings': return { tab: 'settings', render: settingsPage };
+    case 'settings': return { tab: 'settings', fit: true, render: settingsPage };
     case 'meal': return { tab: 'day', render: () => mealPage(isDate(a) ? a : today(), b || 'dinner') };
-    default: return { tab: 'day', render: () => dayPage(isDate(a) ? a : today()), swipe: (dir) => `#/day/${addDays(isDate(a) ? a : today(), dir)}` };
+    default: return { tab: 'day', fit: true, render: () => dayPage(isDate(a) ? a : today()), swipe: (dir) => `#/day/${addDays(isDate(a) ? a : today(), dir)}` };
   }
 }
 
@@ -550,6 +551,9 @@ let current = null;
 function render() {
   current = route();
   const paint = () => {
+    // Today, Home, Week and Settings fill exactly one screen; Shop and meal pages scroll.
+    document.body.classList.toggle('fit', Boolean(current.fit));
+    document.body.dataset.page = location.hash.replace(/^#\/?/, '').split('/')[0] || 'day';
     app.innerHTML = current.render();
     document.querySelectorAll('.tabbar a').forEach((l) => {
       if (l.dataset.tab === current.tab) l.setAttribute('aria-current', 'page');
