@@ -19,7 +19,7 @@ The app opens on **Today**. Home is one tap away in the tab bar.
 
 ```
 Notion (Dishes + Meal Schedule)
-        │   every 3 hours, on every push to master, or on demand
+        │   every 15 minutes, on every push to master, or on demand
         ▼
 GitHub Action ── scripts/sync-notion.mjs ──► site/data/meals.json + site/images/
         │

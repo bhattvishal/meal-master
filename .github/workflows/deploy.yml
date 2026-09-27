@@ -4,8 +4,9 @@ on:
   push:
     branches: [master]
   schedule:
-    # Every 3 hours. Note: GitHub pauses schedules after 60 days without repo activity.
-    - cron: '17 */3 * * *'
+    # Every 15 minutes (GitHub may start scheduled runs a few minutes late).
+    # Note: GitHub pauses schedules after 60 days without repo activity.
+    - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
 
 permissions:
