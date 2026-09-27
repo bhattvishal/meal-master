@@ -455,9 +455,11 @@ function shopPage(from, days) {
   const note = (it) => {
     const badge = it.pantry?.status === 'low' || it.pantry?.status === 'out'
       ? `<span class="pantry-tag ${it.pantry.status}">${t(it.pantry.status === 'low' ? 'pantryLow' : 'pantryOut')}</span> ` : '';
-    const text = it.restock ? t('restock') : it.dishes.map((id) => name(data.dishes[id])).join(', ');
-    return `${badge}${esc([text, haveQty(it.pantry)].filter(Boolean).join(' · '))}`;
+    const usedIn = it.dishes.length ? `<span class="used-in">${esc(it.dishes.map((id) => name(data.dishes[id])).join(', '))}</span>` : '';
+    const extra = [it.restock ? t('restock') : '', haveQty(it.pantry)].filter(Boolean).map(esc);
+    return `${badge}${[usedIn, ...extra].filter(Boolean).join('<span class="sep"> · </span>')}`;
   };
+  const showUsedIn = loadFlag('shopUsedIn');
 
   return `
     <header class="page-head rise">
@@ -474,11 +476,12 @@ function shopPage(from, days) {
     <div class="shop-summary rise" style="--i:2">
       <span><b>${meals.length}</b> ${t('meals')} · <b>${total}</b> ${t('items')}${total ? ` · <b data-done>${done}</b> ${t('inBasket')}` : ''}${have.length ? ` · <b>${have.length}</b> ${t('inPantryShort')}` : ''}</span>
       <span class="actions">
+        ${total ? `<button class="btn${showUsedIn ? ' active' : ''}" data-used-in aria-pressed="${showUsedIn}">${t(showUsedIn ? 'hideUsedIn' : 'showUsedIn')}</button>` : ''}
         ${total ? `<button class="btn" data-share>${t('share')}</button><button class="btn" data-clear>${t('clear')}</button>` : ''}
         ${data.notionPantryUrl ? `<a class="btn" href="${esc(data.notionPantryUrl)}" target="_blank" rel="noopener">${t('editPantry')}</a>` : ''}
       </span>
     </div>
-    ${total ? `<div class="shop-grid" data-list="${listKey}">${groups.map((gr, gi) => `
+    ${total ? `<div class="shop-grid${showUsedIn ? ' show-used' : ''}" data-list="${listKey}">${groups.map((gr, gi) => `
       <section class="panel shop-group rise" style="--i:${gi + 3}">
         <h2>${esc(t(gr.category))}</h2>
         <ul class="ingredients">${gr.items.map((it) => `
@@ -557,6 +560,12 @@ function loadList(key) {
 }
 function saveList(key, list) {
   try { localStorage.setItem(key, JSON.stringify(list)); } catch { /* storage unavailable */ }
+}
+function loadFlag(key) {
+  try { return localStorage.getItem(key) === '1'; } catch { return false; }
+}
+function saveFlag(key, on) {
+  try { localStorage.setItem(key, on ? '1' : '0'); } catch { /* storage unavailable */ }
 }
 const loadChecks = (mealId, dishId) => loadList(`checks:${mealId}:${dishId}`);
 const saveChecks = (mealId, dishId, list) => saveList(`checks:${mealId}:${dishId}`, list);
@@ -678,6 +687,15 @@ app.addEventListener('click', async (e) => {
       if (navigator.share) await navigator.share({ title: t('groceryList'), text });
       else { await navigator.clipboard.writeText(text); e.target.textContent = t('copied'); }
     } catch { /* share cancelled */ }
+    return;
+  }
+  const usedIn = e.target.closest('[data-used-in]');
+  if (usedIn) {
+    const on = app.querySelector('.shop-grid').classList.toggle('show-used');
+    saveFlag('shopUsedIn', on);
+    usedIn.classList.toggle('active', on);
+    usedIn.setAttribute('aria-pressed', String(on));
+    usedIn.textContent = t(on ? 'hideUsedIn' : 'showUsedIn');
     return;
   }
   if (e.target.closest('[data-clear]')) {
