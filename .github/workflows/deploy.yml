@@ -35,6 +35,7 @@ jobs:
           NOTION_SCHEDULE_DB: ${{ vars.NOTION_SCHEDULE_DB }}
           NOTION_COMBOS_DB: ${{ vars.NOTION_COMBOS_DB }}
           NOTION_WHATSAPP_DB: ${{ vars.NOTION_WHATSAPP_DB }}
+          NOTION_PANTRY_DB: ${{ vars.NOTION_PANTRY_DB || '648fbd35e45147349998edb1ba16199e' }}
         run: node scripts/sync-notion.mjs
 
       - name: Stamp build version

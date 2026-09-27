@@ -13,7 +13,7 @@ The app opens on **Today**. Home is one tap away in the tab bar.
 | Meal | `#/meal/2026-09-29/dinner` | A large photo, the nutrition breakdown, tabs for the main dish and each side, ingredients you can tick off, and numbered steps. It can keep the screen on while you cook |
 | Week | `#/week` | Monday to Sunday with every meal, and the week's protein and calorie totals |
 | Settings | `#/settings` | Language (English, हिन्दी, मराठी), number of people, light or dark look. Saved on each device |
-| Shop | `#/shop` or `#/shop/2026-09-28/7` | Grocery list for the next few days, scaled for your household, grouped by aisle, with tick-off boxes and a Share button |
+| Shop | `#/shop` or `#/shop/2026-09-28/7` | Grocery list for the next few days, scaled for your household, grouped by aisle, with tick-off boxes and a Share button. It checks the Pantry in Notion: things you have are set aside, and anything running low is added |
 
 ## How it works
 
@@ -31,7 +31,7 @@ The browser never talks to Notion directly. Notion doesn't allow that, and it wo
 
 ## Notion setup
 
-Both databases live under the **🥗 Meal Plan** page.
+The databases live under the **🥗 Meal Plan** page.
 
 **Dishes**: one row per recipe. Write the ingredients and method in the page body, using headings with bulleted lists for ingredients and numbered lists for steps.
 
@@ -75,6 +75,21 @@ Both databases live under the **🥗 Meal Plan** page.
 | Notes | Text | Shown on the meal page |
 | Planned by | Select | Me or Claude draft |
 
+**Pantry**: what's in the kitchen, one row per item. The Shop list reads it on every sync.
+
+| Property | Type | Notes |
+| --- | --- | --- |
+| Name | Title | For example "Toor dal" |
+| Aisle | Select | The same aisles as the Shop list |
+| Status | Select | In stock, Running low or Out of stock |
+| Quantity, Unit | Number, Select | Optional. Shown on the Shop list as "have 200 g" |
+| Buy when below | Number | Optional reminder for yourself |
+| Also matches | Text | Other names recipes use, comma separated. For example "coriander" on Coriander leaves, or "oil" on Cooking oil |
+| Perishable, Last bought, Notes | | For your own tracking |
+| Name (Hindi), Name (Marathi) | Text | |
+
+On the Shop list, an ingredient marked **In stock** moves to "Already in your pantry" at the bottom. One marked **Running low** or **Out of stock** stays on the list with a tag, and pantry items running low that no recipe needs are added to their aisle as "Restock". Ingredients with no pantry row are listed as usual. The Pantry's **To buy** view shows everything that isn't in stock.
+
 A normal row always wins over a repeat on the same date and meal. So to change one day of a repeating lunch, add a normal row for that day. If two repeats overlap, the one that started later wins.
 
 The page emoji you give a dish is used as its icon until it has a photo.
@@ -84,13 +99,14 @@ The page emoji you give a dish is used as its icon until it has a photo.
 ## One-time setup
 
 1. **Create a Notion integration.** Go to <https://www.notion.so/profile/integrations>, create a new internal integration, and give it only "Read content". Copy its secret.
-2. **Share the Meal Plan page with it.** Open 🥗 Meal Plan in Notion, then choose **⋯ → Connections → Connect to** and pick your integration. Both databases are inside that page, so they're shared too.
+2. **Share the Meal Plan page with it.** Open 🥗 Meal Plan in Notion, then choose **⋯ → Connections → Connect to** and pick your integration. All the databases are inside that page, so they're shared too.
 3. **Add the secret and IDs to GitHub.** In the repo, go to **Settings → Secrets and variables → Actions**:
    - Secret `NOTION_TOKEN`: the integration secret.
    - Variable `NOTION_DISHES_DB`: `770bc04d890a41a589192a1f8129d0ef`
    - Variable `NOTION_SCHEDULE_DB`: `fdb3d2f43eee4a739ed7d8543a4bec9d`
    - Variable `NOTION_COMBOS_DB`: `d194d343e1624d3da63e101beec3fdb7`
    - Variable `NOTION_WHATSAPP_DB`: `3cae8d845e4f4c81bb8c15073d680295` (for the morning WhatsApp messages)
+   - Variable `NOTION_PANTRY_DB`: optional. The workflow uses the Pantry database (`648fbd35e45147349998edb1ba16199e`) when it isn't set
 4. **Make the repo public.** GitHub Pages only works for public repos on a free account. Go to **Settings → General → Danger Zone → Change visibility**. The repo holds no secrets: the Notion key lives in GitHub Secrets.
 5. **Turn on Pages.** Go to **Settings → Pages → Source** and choose **GitHub Actions**.
 6. **Publish.** Merge to `master`, or run **Actions → Sync from Notion and deploy → Run workflow**. The site will be at `https://bhattvishal.github.io/meal-master/`.
@@ -168,7 +184,7 @@ To pull fresh data from Notion locally:
 ```bash
 NOTION_TOKEN=secret_xxx NOTION_DISHES_DB=770bc04d890a41a589192a1f8129d0ef \
 NOTION_SCHEDULE_DB=fdb3d2f43eee4a739ed7d8543a4bec9d NOTION_COMBOS_DB=d194d343e1624d3da63e101beec3fdb7 \
-node scripts/sync-notion.mjs
+NOTION_PANTRY_DB=648fbd35e45147349998edb1ba16199e node scripts/sync-notion.mjs
 ```
 
 The sync needs Node 18 or later and no extra packages.
@@ -184,7 +200,7 @@ meal-master/
 ├── site/                          The published web app
 │   ├── index.html
 │   ├── app.js                     Pages and navigation
-│   ├── kitchen.js                 Scaling amounts and the grocery list
+│   ├── kitchen.js                 Scaling amounts, the grocery list and the pantry check
 │   ├── i18n.js                    English, Hindi and Marathi text
 │   ├── styles.css
 │   ├── sw.js                      Offline support

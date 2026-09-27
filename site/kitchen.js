@@ -186,11 +186,77 @@ export function buildGroceries(meals, dishes, people) {
     if (!grouped.has(cat)) grouped.set(cat, []);
     grouped.get(cat).push({ key: row.key, name: row.name, amount: row.amounts.join(' + '), dishes: [...row.dishes] });
   }
-  const order = [...CATEGORIES.map(([c]) => c), 'Other'];
-  const display = ['Vegetables & herbs', 'Fruit', 'Dairy', 'Pulses, grains & flours', 'Nuts & seeds', 'Spices & pantry', 'Other'];
-  return display
-    .filter((c) => grouped.has(c) && order.includes(c))
+  return DISPLAY
+    .filter((c) => grouped.has(c))
     .map((category) => ({ category, items: grouped.get(category).sort((a, b) => a.name.localeCompare(b.name)) }));
+}
+
+const DISPLAY = ['Vegetables & herbs', 'Fruit', 'Dairy', 'Pulses, grains & flours', 'Nuts & seeds', 'Spices & pantry', 'Other'];
+
+// ---------- pantry ----------
+
+// Notion select options can't hold commas, so the Pantry aisle is spelled differently.
+const AISLES = { 'Pulses & grains & flours': 'Pulses, grains & flours' };
+
+// Finds the pantry item for a grocery name: first by name or "Also matches", then by
+// the words of one being all in the other ("turmeric" and "turmeric powder"), if only one item fits.
+function pantryFinder(pantry) {
+  const names = [];
+  for (const p of pantry) {
+    for (const n of [p.name, ...(p.aliases ?? [])]) {
+      const key = itemName(n);
+      if (key) names.push([key, p]);
+    }
+  }
+  const exact = new Map([...names].reverse());
+  return (name) => {
+    if (exact.has(name)) return exact.get(name);
+    // "almonds and walnuts" is two pantry items; leave it on the list rather than guess.
+    if (name.includes(' and ')) return null;
+    const words = name.split(' ');
+    const fits = new Set(names
+      .filter(([key]) => {
+        const kw = key.split(' ');
+        return kw.every((w) => words.includes(w)) || words.every((w) => kw.includes(w));
+      })
+      .map(([, p]) => p));
+    return fits.size === 1 ? [...fits][0] : null;
+  };
+}
+
+/**
+ * Checks the grocery list against the pantry. Things marked In stock move to `have`;
+ * things running low or out stay on the list, tagged; pantry items running low or out
+ * that no recipe needs are added to their aisle to restock.
+ */
+export function applyPantry(groups, pantry = []) {
+  if (!pantry.length) return { groups, have: [] };
+  const find = pantryFinder(pantry);
+  const used = new Set();
+  const have = [];
+  const out = new Map(groups.map((gr) => [gr.category, []]));
+  for (const gr of groups) {
+    for (const it of gr.items) {
+      const p = find(it.name);
+      if (p) used.add(p.id);
+      const item = p ? { ...it, pantry: p } : it;
+      if (p?.status === 'in') have.push(item);
+      else out.get(gr.category).push(item);
+    }
+  }
+  for (const p of pantry) {
+    if ((p.status !== 'low' && p.status !== 'out') || used.has(p.id)) continue;
+    const aisle = AISLES[p.aisle] ?? p.aisle;
+    const cat = DISPLAY.includes(aisle) ? aisle : categoryOf(itemName(p.name));
+    if (!out.has(cat)) out.set(cat, []);
+    out.get(cat).push({ key: `pantry:${p.id}`, name: p.name.toLowerCase(), amount: '', dishes: [], pantry: p, restock: true });
+  }
+  return {
+    groups: DISPLAY
+      .filter((c) => out.get(c)?.length)
+      .map((category) => ({ category, items: out.get(category).sort((a, b) => a.name.localeCompare(b.name)) })),
+    have: have.sort((a, b) => a.name.localeCompare(b.name)),
+  };
 }
 
 // ---------- daily goals ----------

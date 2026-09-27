@@ -6,7 +6,7 @@
 //   #/shop[/YYYY-MM-DD/N]    grocery list for N days from that date
 //   #/settings               language, household size and appearance
 
-import { getPeople, setPeople, factorFor, scaleLine, buildGroceries, getGoals, setGoal, goalProgress, DEFAULT_GOALS } from './kitchen.js';
+import { getPeople, setPeople, factorFor, scaleLine, buildGroceries, applyPantry, getGoals, setGoal, goalProgress, DEFAULT_GOALS } from './kitchen.js';
 import { LANGS, getLang, setLang, locale, t, tag, unit, grocery, amount, dishText } from './i18n.js';
 
 const SLOTS = ['breakfast', 'lunch', 'dinner'];
@@ -435,7 +435,7 @@ function shopPage(from, days) {
   const to = addDays(from, days - 1);
   const meals = data.meals.filter((m) => m.date >= from && m.date <= to);
   const people = getPeople();
-  const groups = buildGroceries(meals, data.dishes, people);
+  const { groups, have } = applyPantry(buildGroceries(meals, data.dishes, people), data.pantry);
   const listKey = `shop:${from}:${days}`;
   const ticked = new Set(loadList(listKey));
   const total = groups.reduce((a, gr) => a + gr.items.length, 0);
@@ -449,6 +449,15 @@ function shopPage(from, days) {
   ];
   const range = `${fmt(from, { weekday: 'short', day: 'numeric', month: 'short' })} – ${fmt(to, { weekday: 'short', day: 'numeric', month: 'short' })}`;
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  const lang = getLang();
+  const itemLabel = (it) => cap((lang !== 'en' && it.pantry?.i18n?.[lang]) || grocery(it.name));
+  const haveQty = (p) => (p?.qty != null ? t('haveQty', { qty: amount(`${p.qty}${p.unit ? ` ${p.unit}` : ''}`) }) : '');
+  const note = (it) => {
+    const badge = it.pantry?.status === 'low' || it.pantry?.status === 'out'
+      ? `<span class="pantry-tag ${it.pantry.status}">${t(it.pantry.status === 'low' ? 'pantryLow' : 'pantryOut')}</span> ` : '';
+    const text = it.restock ? t('restock') : it.dishes.map((id) => name(data.dishes[id])).join(', ');
+    return `${badge}${esc([text, haveQty(it.pantry)].filter(Boolean).join(' · '))}`;
+  };
 
   return `
     <header class="page-head rise">
@@ -463,9 +472,10 @@ function shopPage(from, days) {
       <div class="scale-row">${peopleControl(people)}<span class="muted">${esc(peopleText(people))}</span></div>
     </div>
     <div class="shop-summary rise" style="--i:2">
-      <span><b>${meals.length}</b> ${t('meals')} · <b>${total}</b> ${t('items')}${total ? ` · <b data-done>${done}</b> ${t('inBasket')}` : ''}</span>
+      <span><b>${meals.length}</b> ${t('meals')} · <b>${total}</b> ${t('items')}${total ? ` · <b data-done>${done}</b> ${t('inBasket')}` : ''}${have.length ? ` · <b>${have.length}</b> ${t('inPantryShort')}` : ''}</span>
       <span class="actions">
         ${total ? `<button class="btn" data-share>${t('share')}</button><button class="btn" data-clear>${t('clear')}</button>` : ''}
+        ${data.notionPantryUrl ? `<a class="btn" href="${esc(data.notionPantryUrl)}" target="_blank" rel="noopener">${t('editPantry')}</a>` : ''}
       </span>
     </div>
     ${total ? `<div class="shop-grid" data-list="${listKey}">${groups.map((gr, gi) => `
@@ -473,11 +483,16 @@ function shopPage(from, days) {
         <h2>${esc(t(gr.category))}</h2>
         <ul class="ingredients">${gr.items.map((it) => `
           <li><label><input type="checkbox" data-shop="${esc(it.key)}" ${ticked.has(it.key) ? 'checked' : ''}>
-            <span class="shop-item"><span class="shop-name">${esc(cap(grocery(it.name)))}</span>${it.amount ? `<b class="shop-amt">${esc(amount(it.amount))}</b>` : ''}
-            <small class="muted">${esc(it.dishes.map((id) => name(data.dishes[id])).join(', '))}</small></span></label></li>`).join('')}
+            <span class="shop-item"><span class="shop-name">${esc(itemLabel(it))}</span>${it.amount ? `<b class="shop-amt">${esc(amount(it.amount))}</b>` : ''}
+            <small class="muted">${note(it)}</small></span></label></li>`).join('')}
         </ul>
       </section>`).join('')}</div>`
-      : `<div class="panel" style="text-align:center"><p class="muted">${t('noMealsDays')}</p></div>`}
+      : `<div class="panel" style="text-align:center"><p class="muted">${t(have.length ? 'allInPantry' : 'noMealsDays')}</p></div>`}
+    ${have.length ? `<details class="panel have-panel rise" style="--i:${groups.length + 3}">
+      <summary><h2>✓ ${t('inPantry')} <span class="muted">(${have.length})</span></h2></summary>
+      <p class="muted">${t('inPantryHelp')}</p>
+      <ul class="have-list">${have.map((it) => `<li><span>${esc(itemLabel(it))}</span>${it.amount ? ` <small class="muted">${esc(amount(it.amount))}${it.pantry.qty != null ? ` · ${esc(haveQty(it.pantry))}` : ''}</small>` : ''}</li>`).join('')}</ul>
+    </details>` : ''}
     <p class="footer-note">${esc(t('amountsFor', { people: peopleText(people) }))}</p>
     ${footer()}`;
 }
