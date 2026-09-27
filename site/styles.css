@@ -629,3 +629,17 @@ body.fit .settings .goals-panel { grid-column: 1 / -1; }
 .have-panel[open] summary h2::after { content: '▴'; }
 .have-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
 .have-list li { padding: 6px 12px; border-radius: 999px; background: var(--chip, color-mix(in srgb, var(--ink) 6%, transparent)); font-size: 14px; }
+
+/* Shop: full width; on wide screens every aisle sits side by side in one row. */
+body[data-page="shop"] main { max-width: none; }
+@media (min-width: 1000px) {
+  body[data-page="shop"] main { padding-left: clamp(16px, 2.2vw, 28px); padding-right: clamp(16px, 2.2vw, 28px); }
+  .shop-grid { columns: auto; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: clamp(10px, 1.2vw, 18px); align-items: start; }
+  .shop-group { margin: 0; padding: clamp(14px, 1.4vw, 22px); }
+  .shop-group h2 { font-size: clamp(17px, 1.3vw, 22px); }
+  .shop-group .ingredients li { font-size: clamp(14px, 1.05vw, 16px); }
+  .shop-item small { font-size: 11.5px; }
+  .shop-item { grid-template-columns: 1fr; }
+  .shop-amt { white-space: normal; font-size: .9em; color: var(--ink-2); }
+  .shop-group .ingredients li label { padding-left: 4px; padding-right: 4px; gap: 10px; }
+}
