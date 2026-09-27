@@ -3,7 +3,7 @@
 // Photos are downloaded into site/images/ because Notion file links expire after an hour.
 // Dishes without a photo get a free stock photo from Wikimedia Commons.
 //
-// Env: NOTION_TOKEN, NOTION_DISHES_DB, NOTION_SCHEDULE_DB, NOTION_COMBOS_DB (optional)
+// Env: NOTION_TOKEN, NOTION_DISHES_DB, NOTION_SCHEDULE_DB, NOTION_COMBOS_DB (optional), NOTION_PANTRY_DB (optional)
 // Optional: PAST_DAYS (default 14), FUTURE_DAYS (default 60), STOCK_PHOTOS=0 to disable Commons lookup.
 
 import { mkdir, writeFile, rm } from 'node:fs/promises';
@@ -18,7 +18,7 @@ const OUT_FILE = join(SITE, 'data', 'meals.json');
 const NOTION_VERSION = '2022-06-28';
 const USER_AGENT = 'meal-master-sync/1.0 (https://github.com/bhattvishal/meal-master)';
 
-const { NOTION_TOKEN, NOTION_DISHES_DB, NOTION_SCHEDULE_DB, NOTION_COMBOS_DB } = process.env;
+const { NOTION_TOKEN, NOTION_DISHES_DB, NOTION_SCHEDULE_DB, NOTION_COMBOS_DB, NOTION_PANTRY_DB } = process.env;
 const PAST_DAYS = Number(process.env.PAST_DAYS ?? 14);
 const FUTURE_DAYS = Number(process.env.FUTURE_DAYS ?? 60);
 const STOCK_PHOTOS = process.env.STOCK_PHOTOS !== '0';
@@ -331,17 +331,40 @@ async function main() {
     };
   }
 
+  // What's already in the kitchen, so the Shop list can skip it or add what's running low.
+  const PANTRY_STATUS = { 'In stock': 'in', 'Running low': 'low', 'Out of stock': 'out' };
+  const pantry = [];
+  if (NOTION_PANTRY_DB) {
+    console.log('Querying pantry…');
+    for (const p of await queryAll(NOTION_PANTRY_DB)) {
+      const name = prop(p, 'Name');
+      if (!name) continue;
+      pantry.push({
+        id: p.id,
+        name,
+        aisle: prop(p, 'Aisle'),
+        status: PANTRY_STATUS[prop(p, 'Status')] ?? null,
+        qty: prop(p, 'Quantity'),
+        unit: prop(p, 'Unit'),
+        aliases: (prop(p, 'Also matches') ?? '').split(',').map((a) => a.trim()).filter(Boolean),
+        i18n: { hi: prop(p, 'Name (Hindi)'), mr: prop(p, 'Name (Marathi)') },
+      });
+    }
+  }
+
   const data = {
     generatedAt: new Date().toISOString(),
     source: 'notion',
     notionScheduleUrl: `https://www.notion.so/${NOTION_SCHEDULE_DB.replace(/-/g, '')}`,
     notionWhatsappUrl: process.env.NOTION_WHATSAPP_DB ? `https://www.notion.so/${process.env.NOTION_WHATSAPP_DB.replace(/-/g, '')}` : null,
+    notionPantryUrl: NOTION_PANTRY_DB ? `https://www.notion.so/${NOTION_PANTRY_DB.replace(/-/g, '')}` : null,
     dishes,
     meals,
+    pantry,
   };
   await mkdir(dirname(OUT_FILE), { recursive: true });
   await writeFile(OUT_FILE, JSON.stringify(data, null, 2) + '\n');
-  console.log(`Wrote ${meals.length} meals and ${Object.keys(dishes).length} dishes to ${OUT_FILE}`);
+  console.log(`Wrote ${meals.length} meals, ${Object.keys(dishes).length} dishes and ${pantry.length} pantry items to ${OUT_FILE}`);
 }
 
 main().catch((err) => {

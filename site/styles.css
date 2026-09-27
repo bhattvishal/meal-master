@@ -395,8 +395,8 @@ a.slot:hover { transform: scale(1.03); }
 .range-chips .chip { box-shadow: var(--shadow); background: var(--surface); }
 .range-chips .chip.active { background: var(--accent); color: var(--accent-ink); }
 .shop-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; color: var(--ink-2); }
-.shop-summary .actions { display: flex; gap: 8px; }
-.shop-summary .btn { padding: 9px 16px; font-size: 14px; }
+.shop-summary .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.shop-summary .btn { padding: 9px 16px; font-size: 14px; white-space: nowrap; }
 .shop-grid { columns: 1; column-gap: 18px; }
 @media (min-width: 720px) { .shop-grid { columns: 2; } }
 @media (min-width: 1100px) { .shop-grid { columns: 3; } }
@@ -616,3 +616,35 @@ body.fit .settings .goals-panel { grid-column: 1 / -1; }
   body.fit .settings .goals-panel > p.muted { font-size: 11px; }
   body.fit .settings .wa-help { display: none; }
 }
+
+/* Pantry on the Shop page */
+.pantry-tag { display: inline-block; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 700; line-height: 18px; }
+.pantry-tag.low { background: color-mix(in srgb, #e08a00 18%, transparent); color: color-mix(in srgb, #c77700 85%, var(--ink)); }
+.pantry-tag.out { background: color-mix(in srgb, var(--protein) 16%, transparent); color: color-mix(in srgb, var(--protein) 85%, var(--ink)); }
+.have-panel { margin-top: 4px; }
+.have-panel summary { cursor: pointer; list-style: none; }
+.have-panel summary::-webkit-details-marker { display: none; }
+.have-panel summary h2 { margin: 0; }
+.have-panel summary h2::after { content: '▾'; margin-left: 8px; font-size: .8em; color: var(--ink-3); }
+.have-panel[open] summary h2::after { content: '▴'; }
+.have-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.have-list li { padding: 6px 12px; border-radius: 999px; background: var(--chip, color-mix(in srgb, var(--ink) 6%, transparent)); font-size: 14px; }
+
+/* Shop: full width; on wide screens every aisle sits side by side in one row. */
+body[data-page="shop"] main { max-width: none; }
+@media (min-width: 1000px) {
+  body[data-page="shop"] main { padding-left: clamp(16px, 2.2vw, 28px); padding-right: clamp(16px, 2.2vw, 28px); }
+  .shop-grid { columns: auto; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: clamp(10px, 1.2vw, 18px); align-items: start; }
+  .shop-group { margin: 0; padding: clamp(14px, 1.4vw, 22px); }
+  .shop-group h2 { font-size: clamp(17px, 1.3vw, 22px); }
+  .shop-group .ingredients li { font-size: clamp(14px, 1.05vw, 16px); }
+  .shop-item small { font-size: 11.5px; }
+  .shop-item { grid-template-columns: 1fr; }
+  .shop-amt { white-space: normal; font-size: .9em; color: var(--ink-2); }
+  .shop-group .ingredients li label { padding-left: 4px; padding-right: 4px; gap: 10px; }
+}
+
+/* "Show used in" toggle: recipe names under each item are hidden until it's on. */
+.shop-grid:not(.show-used) .used-in, .shop-grid:not(.show-used) .used-in + .sep { display: none; }
+.shop-item small:empty { display: none; }
+.shop-summary .btn.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
