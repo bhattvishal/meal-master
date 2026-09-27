@@ -631,7 +631,7 @@ body.fit .settings .goals-panel { grid-column: 1 / -1; }
 .have-list li { padding: 6px 12px; border-radius: 999px; background: var(--chip, color-mix(in srgb, var(--ink) 6%, transparent)); font-size: 14px; }
 
 /* Shop: full width; on wide screens every aisle sits side by side in one row. */
-body[data-page="shop"] main { max-width: none; }
+body[data-page="shop"] main, body[data-page="prep"] main { max-width: none; }
 @media (min-width: 1000px) {
   body[data-page="shop"] main { padding-left: clamp(16px, 2.2vw, 28px); padding-right: clamp(16px, 2.2vw, 28px); }
   .shop-grid { columns: auto; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: clamp(10px, 1.2vw, 18px); align-items: start; }
@@ -648,3 +648,15 @@ body[data-page="shop"] main { max-width: none; }
 .shop-grid:not(.show-used) .used-in, .shop-grid:not(.show-used) .used-in + .sep { display: none; }
 .shop-item small:empty { display: none; }
 .shop-summary .btn.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+/* Prep ahead */
+.prep-list { display: grid; gap: 18px; }
+@media (min-width: 1000px) { .prep-list { grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); align-items: start; } }
+.prep-group h2 { margin-bottom: 6px; }
+.prep-item { display: grid; gap: 2px; flex: 1; }
+.prep-text { font-weight: 600; }
+.prep-item small { font-size: 12.5px; }
+.prep-item small a { color: inherit; text-decoration: underline; text-decoration-color: var(--line); }
+.ingredients input:checked + .prep-item .prep-text { text-decoration: line-through; color: var(--ink-3); }
+.prep-group .ingredients input:checked { background: var(--accent); border-color: var(--accent); }
+.chip.prep-chip { background: color-mix(in srgb, #e08a00 16%, var(--surface)); }

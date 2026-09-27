@@ -12,6 +12,7 @@ The app opens on **Today**. Home is one tap away in the tab bar.
 | Today / Day | `#/day` or `#/day/2026-09-29` | Breakfast, lunch and dinner cards with a photo, sides and nutrients, plus day totals. Swipe or use the arrow keys to change day |
 | Meal | `#/meal/2026-09-29/dinner` | A large photo, the nutrition breakdown, tabs for the main dish and each side, ingredients you can tick off, and numbered steps. It can keep the screen on while you cook |
 | Week | `#/week` | Monday to Sunday with every meal, and the week's protein and calorie totals |
+| Prep | `#/prep` or `#/prep/4` | What to soak, sprout or ferment ahead for the next 2, 4 or 7 days, grouped by when to do it (tonight, tomorrow morning…), with tick boxes. The Today page shows a 🔔 chip when something is due within a day |
 | Settings | `#/settings` | Language (English, हिन्दी, मराठी), number of people, light or dark look. Saved on each device |
 | Shop | `#/shop` or `#/shop/2026-09-28/7` | Grocery list for the next few days, scaled for your household, grouped by aisle, with tick-off boxes and a Share button. It checks the Pantry in Notion: things you have are set aside, and anything running low is added |
 
@@ -48,7 +49,10 @@ The databases live under the **🥗 Meal Plan** page.
 | Tags | Multi-select | High protein, Vegetarian, Make ahead, Office-friendly |
 | Nutrition source | Select | Estimated or Verified |
 | Name (Hindi), Name (Marathi) | Text | Dish name in Hindi and Marathi |
+| Prep ahead | Text | Optional reminders for the Prep page, one per line: `Night before: Soak rajma`, `2 nights before: Soak moong to sprout`, `Morning before: …`, `4 hours before: …`. When empty, the app finds them in the recipe (see below) |
 | Serving (Hindi), Serving (Marathi) | Text | The serving text in Hindi and Marathi |
+
+**Prep reminders from recipes**: for dishes without a Prep ahead note, the app looks for ingredients like "1 cup rajma, soaked overnight" or "soaked 4 hours", sprouts (soak whole moong two nights before, tie in a cloth the morning before), and method steps that take four hours or more, like "leave 8–12 hours until risen". Back-to-back steps are added up, so a 6-hour soak before a 12-hour ferment starts 18 hours ahead. Anything that would fall between 10 pm and 7 am moves to 9 pm the evening before.
 
 **Meal Combos**: meals you repeat, saved once. For example, "Idli Sambar" is Idli plus Sambar and Coconut Chutney.
 
@@ -201,6 +205,7 @@ meal-master/
 │   ├── index.html
 │   ├── app.js                     Pages and navigation
 │   ├── kitchen.js                 Scaling amounts, the grocery list and the pantry check
+│   ├── prep.js                    Soak, sprout and ferment reminders
 │   ├── i18n.js                    English, Hindi and Marathi text
 │   ├── styles.css
 │   ├── sw.js                      Offline support

@@ -4,13 +4,14 @@
 //   #/meal/YYYY-MM-DD/slot   one meal with its dishes and recipes
 //   #/week[/YYYY-MM-DD]      the week (Mon-Sun) containing that date
 //   #/shop[/YYYY-MM-DD/N]    grocery list for N days from that date
+//   #/prep[/N]               things to soak, sprout or ferment ahead for the next N days
 //   #/settings               language, household size and appearance
 
 import { getPeople, setPeople, factorFor, scaleLine, buildGroceries, applyPantry, getGoals, setGoal, goalProgress, DEFAULT_GOALS } from './kitchen.js';
+import { prepTasks, SLOT_TIME } from './prep.js';
 import { LANGS, getLang, setLang, locale, t, tag, unit, grocery, amount, dishText } from './i18n.js';
 
 const SLOTS = ['breakfast', 'lunch', 'dinner'];
-const SLOT_TIME = { breakfast: '08:00', lunch: '13:00', dinner: '20:00', snack: '16:00' };
 const SLOT_EMOJI = { breakfast: '🥣', lunch: '🍱', dinner: '🍛', snack: '🥜' };
 const MACROS = [
   { key: 'protein', kcal: 4 },
@@ -278,10 +279,14 @@ function dayPage(date) {
     return `<a class="chip extra meal-${m.meal}" href="#/meal/${date}/${m.meal}"><span class="dot"></span>${slotName(m.meal)} · ${esc(d ? name(d) : m.name)}</a>`;
   }).join('');
 
+  // A reminder when something needs soaking or sprouting in the next day.
+  const soon = date === today() ? prepList(1).filter((task) => !prepDone().has(task.id) && task.due - Date.now() < 24 * 3600000) : [];
+  const prepChip = soon.length ? `<a class="chip extra prep-chip" href="#/prep">🔔 ${esc(t(soon.length === 1 ? 'prepChipOne' : 'prepChip', { n: soon.length }))}</a>` : '';
+
   return `
     <header class="page-head rise">
       <div class="titles"><div class="eyebrow">${esc(relDay(date))}</div><h1>${fmt(date, { weekday: 'long', day: 'numeric', month: 'long' })}</h1></div>
-      ${extras ? `<div class="extras">${extras}</div>` : ''}
+      ${extras || prepChip ? `<div class="extras">${prepChip}${extras}</div>` : ''}
       <div class="nav">
         ${date !== today() ? `<a class="btn small" href="#/day">${t('jumpToday')}</a>` : ''}
         <a class="icon-btn" href="#/day/${addDays(date, -1)}" aria-label="${t('prevDay')}">${chevron('left')}</a>
@@ -500,6 +505,72 @@ function shopPage(from, days) {
     ${footer()}`;
 }
 
+// ---------- prep ahead ----------
+
+const prepWords = () => ({
+  soak: (what) => t('prepSoak', { what }),
+  sproutSoak: (what) => t('prepSproutSoak', { what }),
+  sproutDrain: () => t('prepSproutDrain'),
+});
+const prepDone = () => new Set(loadList('prepDone'));
+
+// Tasks for meals from now until the end of `days` days after today.
+function prepList(days) {
+  const people = getPeople();
+  return prepTasks({
+    meals: data.meals,
+    dishes: data.dishes,
+    from: new Date(),
+    untilDate: addDays(today(), days),
+    factorFor: (dish) => factorFor(dish, people),
+    local: (dish) => dishText(dish, 'sections'),
+    words: prepWords(),
+  });
+}
+
+const PREP_ICON = { soak: '💧', sprout: '🌱', step: '⏱️', notion: '📝' };
+
+function prepWhen(due) {
+  if (due < new Date()) return t('prepNow');
+  const diff = Math.round((new Date(due.getFullYear(), due.getMonth(), due.getDate()) - new Date(`${today()}T00:00:00`)) / 86400000);
+  const part = due.getHours() < 12 ? 'Morning' : due.getHours() < 17 ? 'Afternoon' : 'Evening';
+  if (diff === 0) return t(part === 'Evening' ? 'tonight' : `this${part}`);
+  if (diff === 1) return t(`tomorrow${part}`);
+  return `${fmt(iso(due), { weekday: 'long' })} · ${t(`part${part}`)}`;
+}
+
+function prepPage(days) {
+  const tasks = prepList(days);
+  const done = prepDone();
+  const groups = [];
+  for (const task of tasks) {
+    const label = prepWhen(task.due);
+    if (groups.at(-1)?.label !== label) groups.push({ label, tasks: [] });
+    groups.at(-1).tasks.push(task);
+  }
+  const clock = (d) => d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' });
+  const ranges = [['prep2', 2], ['prep4', 4], ['prep7', 7]];
+  return `
+    <header class="page-head rise">
+      <div class="titles"><div class="eyebrow">${t('prepEyebrow')}</div><h1>${t('prepTitle')}</h1></div>
+    </header>
+    <div class="shop-bar rise" style="--i:1">
+      <div class="range-chips">${ranges.map(([key, n]) => `<a class="chip${n === days ? ' active' : ''}" href="#/prep/${n}">${t(key)}</a>`).join('')}</div>
+      <span class="muted">${tasks.length ? `<b>${tasks.length}</b> ${t('prepTasks')} · <b data-done>${tasks.filter((x) => done.has(x.id)).length}</b> ${t('prepDoneCount')}` : ''}</span>
+    </div>
+    ${groups.length ? `<div class="prep-list">${groups.map((gr, gi) => `
+      <section class="panel prep-group rise" style="--i:${gi + 2}">
+        <h2>${esc(gr.label)}</h2>
+        <ul class="ingredients">${gr.tasks.map((task) => `
+          <li><label><input type="checkbox" data-prep="${esc(task.id)}" ${done.has(task.id) ? 'checked' : ''}>
+            <span class="prep-item"><span class="prep-text"><span aria-hidden="true">${PREP_ICON[task.kind]}</span> ${esc(task.text)}</span>
+            <small class="muted">${esc(task.due < new Date() ? t('prepBefore', { time: clock(task.mealAt) }) : t('prepBy', { time: clock(task.due) }))} · ${task.uses.map((u) => `<a href="#/meal/${u.meal.date}/${u.meal.meal}">${esc(t('prepFor', { meal: `${fmt(u.meal.date, { weekday: 'short' })} ${slotName(u.meal.meal)}`, dish: name(u.dish) }))}</a>`).join(', ')}</small></span></label></li>`).join('')}
+        </ul>
+      </section>`).join('')}</div>`
+      : `<div class="panel rise" style="--i:2;text-align:center"><p class="muted">${t('prepNone')}</p></div>`}
+    <p class="footer-note">${esc(t('prepHelp'))}</p>`;
+}
+
 function settingsPage() {
   const lang = getLang();
   const theme = getTheme();
@@ -596,6 +667,7 @@ function route() {
       const days = Math.min(14, Math.max(1, Number(b) || 7));
       return { tab: 'shop', render: () => shopPage(from, days), swipe: (dir) => `#/shop/${addDays(from, dir * days)}/${days}` };
     }
+    case 'prep': return { tab: 'prep', render: () => prepPage([2, 4, 7].includes(Number(a)) ? Number(a) : 2) };
     case 'settings': return { tab: 'settings', fit: true, render: settingsPage };
     case 'meal': return { tab: 'day', render: () => mealPage(isDate(a) ? a : today(), b || 'dinner') };
     default: return { tab: 'day', fit: true, render: () => dayPage(isDate(a) ? a : today()), swipe: (dir) => `#/day/${addDays(isDate(a) ? a : today(), dir)}` };
@@ -717,6 +789,14 @@ app.addEventListener('change', (e) => {
   if (e.target.matches('[data-goal]')) {
     setGoal(e.target.dataset.goal, Number(e.target.value));
     e.target.value = getGoals()[e.target.dataset.goal];
+    return;
+  }
+  if (e.target.matches('[data-prep]')) {
+    const done = prepDone();
+    if (e.target.checked) done.add(e.target.dataset.prep); else done.delete(e.target.dataset.prep);
+    saveList('prepDone', [...done]);
+    const count = app.querySelector('[data-done]');
+    if (count) count.textContent = app.querySelectorAll('[data-prep]:checked').length;
     return;
   }
   if (e.target.matches('[data-shop]')) {
