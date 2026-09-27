@@ -827,11 +827,20 @@ addEventListener('keydown', (e) => {
   if (e.key === 'ArrowLeft') location.hash = current.swipe(-1);
 });
 
-// Re-render when the app comes back to the foreground on a new day.
+// Pick up new data from Notion without a reload: when the app comes back to the
+// foreground, and every 10 minutes while it stays open. Only re-render if something changed.
 let shownDay = today();
+let lastCheck = Date.now();
+async function refresh() {
+  lastCheck = Date.now();
+  const before = data?.generatedAt;
+  try { await load(); } catch { return; }
+  if (data.generatedAt !== before || shownDay !== today()) { shownDay = today(); render(); }
+}
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && shownDay !== today()) { shownDay = today(); load().then(render); }
+  if (document.visibilityState === 'visible' && (shownDay !== today() || Date.now() - lastCheck > 60000)) refresh();
 });
+setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 10 * 60000);
 
 // ---------- start ----------
 
