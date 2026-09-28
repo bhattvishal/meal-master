@@ -9,8 +9,8 @@ The app opens on **Today**. Home is one tap away in the tab bar.
 | Page | Address | What it shows |
 | --- | --- | --- |
 | Home | `#/home` | An animated plate for today, with the protein total, what's next, and today's three meals |
-| Today / Day | `#/day` or `#/day/2026-09-29` | Breakfast, lunch and dinner cards with a photo, sides and nutrients, plus day totals. Each card has a share button. Swipe or use the arrow keys to change day |
-| Meal | `#/meal/2026-09-29/dinner` | A header with tabs for the main dish and each side, the dish photo and details beside the recipe, the nutrition breakdown, ingredients you can tick off, and numbered steps. It can keep the screen on while you cook. The share button sends the meal on WhatsApp: the main dish photo, the dish names and the meal's note, nothing else. **Share with recipe** adds a link that opens the meal in the app |
+| Today / Day | `#/day` or `#/day/2026-09-29` | Breakfast, lunch and dinner cards with a collage of the main dish and its sides, the nutrients, plus day totals. Each card has a share button. Swipe or use the arrow keys to change day |
+| Meal | `#/meal/2026-09-29/dinner` | A header with tabs for the main dish and each side, the dish photo and details beside the recipe, the nutrition breakdown, ingredients you can tick off, and numbered steps. It can keep the screen on while you cook. The share button sends the meal on WhatsApp: one collage picture of all the dishes, the dish names and the meal's note, nothing else. **Share with recipe** adds a link that opens the meal in the app |
 | Week | `#/week` | Monday to Sunday with every meal, and the week's protein and calorie totals |
 | Prep | `#/prep` or `#/prep/4` | What to soak, sprout or ferment ahead for the next 2, 4 or 7 days, grouped by when to do it (tonight, tomorrow morning…), with tick boxes. The Today page shows a 🔔 chip when something is due within a day |
 | Settings | `#/settings` | Language (English, हिन्दी, मराठी), number of people, light or dark look. Saved on each device |
@@ -206,6 +206,7 @@ meal-master/
 │   ├── app.js                     Pages and navigation
 │   ├── kitchen.js                 Scaling amounts, the grocery list and the pantry check
 │   ├── prep.js                    Soak, sprout and ferment reminders
+│   ├── collage.js                 The meal picture shared on WhatsApp
 │   ├── i18n.js                    English, Hindi and Marathi text
 │   ├── styles.css
 │   ├── sw.js                      Offline support
