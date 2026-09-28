@@ -1,9 +1,10 @@
-// Offline support. The deploy workflow replaces __BUILD__ so each deploy refreshes the cache.
+// Offline support. The deploy workflow replaces __BUILD__ with a hash of the code, so a code change
+// installs a new worker, and the app reloads itself onto the new version.
 const VERSION = 'mm-__BUILD__';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'kitchen.js', 'prep.js', 'i18n.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png'];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {
@@ -17,7 +18,8 @@ self.addEventListener('activate', (event) => {
 async function networkFirst(request) {
   const cache = await caches.open(VERSION);
   try {
-    const res = await fetch(request);
+    // GitHub Pages lets browsers reuse files for 10 minutes; always check with the server instead.
+    const res = await fetch(request, { cache: 'no-cache' });
     if (res.ok) cache.put(request, res.clone());
     return res;
   } catch {

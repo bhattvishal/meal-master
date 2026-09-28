@@ -888,8 +888,10 @@ addEventListener('keydown', (e) => {
 // foreground, and every 10 minutes while it stays open. Only re-render if something changed.
 let shownDay = today();
 let lastCheck = Date.now();
+let swReg = null;
 async function refresh() {
   lastCheck = Date.now();
+  swReg?.update().catch(() => {});
   const before = data?.generatedAt;
   try { await load(); } catch { return; }
   if (data.generatedAt !== before || shownDay !== today()) { shownDay = today(); render(); }
@@ -919,5 +921,12 @@ load().then(render).catch((err) => {
 });
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
-  navigator.serviceWorker.register('sw.js');
+  // When a deploy changes the code, the new worker takes over and the app reloads onto it.
+  // The very first install also takes control, but that page is already up to date.
+  let hadWorker = Boolean(navigator.serviceWorker.controller);
+  navigator.serviceWorker.register('sw.js').then((reg) => { swReg = reg; }).catch(() => {});
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadWorker) location.reload();
+    hadWorker = true;
+  });
 }

@@ -38,8 +38,11 @@ jobs:
           NOTION_PANTRY_DB: ${{ vars.NOTION_PANTRY_DB || '648fbd35e45147349998edb1ba16199e' }}
         run: node scripts/sync-notion.mjs
 
+      # A hash of the app's code (not the meal data or photos), so the app reloads only when the code changed.
       - name: Stamp build version
-        run: sed -i "s/__BUILD__/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/" site/sw.js
+        run: |
+          BUILD=$(find site -type f -not -path 'site/data/*' -not -path 'site/images/*' | sort | xargs sha256sum | sha256sum | cut -c1-12)
+          sed -i "s/__BUILD__/${BUILD}/" site/sw.js
 
       - uses: actions/configure-pages@v5
 
