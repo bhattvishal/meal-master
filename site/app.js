@@ -618,20 +618,29 @@ function settingsPage() {
     </div>`;
 }
 
+// "Today's Breakfast", "Tomorrow's Lunch", "Wednesday's Dinner"; further off or in the past, "Dinner · 5 October".
+function shareHeading(date, slot) {
+  const diff = Math.round((parse(date) - parse(today())) / 86400000);
+  const meal = slotName(slot);
+  if (diff < 0 || diff > 6) return t('shareHeadingOn', { meal, date: fmt(date, { day: 'numeric', month: 'long' }) });
+  const day = diff === 0 ? t('today') : diff === 1 ? t('tomorrow') : fmt(date, { weekday: 'long' });
+  const key = t(`shareHeading_${slot}`) === `shareHeading_${slot}` ? 'shareHeading' : `shareHeading_${slot}`;
+  return t(key, { day, meal });
+}
+
 // Only what the cook needs: the main dish photo, dish names and the meal's note. No recipe or nutrition;
 // "Share with recipe" adds a link that opens this meal in the app.
 function mealShareText(date, slot, withLink = false) {
   const meal = mealFor(date, slot);
-  const [main, ...sides] = dishesOf(meal);
+  const dishes = dishesOf(meal);
   const lines = [
-    `${SLOT_EMOJI[slot] ?? '🍽️'} *${slotName(slot)}* · ${fmt(date, { weekday: 'long', day: 'numeric', month: 'long' })} · ${mealTime(meal, slot)}`,
+    `${SLOT_EMOJI[slot] ?? '🍽️'} *${shareHeading(date, slot)}*`,
     '',
-    `*${name(main)}*`,
+    ...dishes.map((d, i) => `${i + 1}. ${name(d)}${d.role === 'main' ? ` (${t('shareMain')})` : ''}`),
   ];
-  if (sides.length) lines.push(`${t('shareWith')}: ${sides.map((d) => name(d)).join(', ')}`);
   if (meal.notes) lines.push('', `📝 ${t('shareNote')}: ${meal.notes}`);
   if (withLink) lines.push('', `📖 ${t('shareRecipeLine')}: ${location.origin}${location.pathname}?m=${date}-${slot}`);
-  return { text: lines.join('\n'), main };
+  return { text: lines.join('\n'), main: dishes[0] };
 }
 
 async function mealPhotoFile(dish) {
