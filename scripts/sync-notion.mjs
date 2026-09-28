@@ -298,6 +298,14 @@ async function main() {
   console.log('Querying dishes…');
   const dishPages = await queryAll(NOTION_DISHES_DB);
   const used = new Set(meals.flatMap((m) => [...m.main, ...m.sides]));
+  // Quick lunches to pack for the office, listed on the Grab and Go page even when they aren't planned:
+  // tagged "Grab and Go", or tagged "Office-friendly" and ready in 10 minutes or less.
+  const grabAndGo = dishPages.filter((page) => {
+    const tags = prop(page, 'Tags') ?? [];
+    const mins = prop(page, 'Prep time (min)');
+    return tags.includes('Grab and Go') || (tags.includes('Office-friendly') && mins != null && mins <= 10);
+  }).map((page) => page.id);
+  grabAndGo.forEach((id) => used.add(id));
 
   await rm(IMAGE_DIR, { recursive: true, force: true });
   await mkdir(IMAGE_DIR, { recursive: true });
@@ -361,11 +369,12 @@ async function main() {
     notionPantryUrl: NOTION_PANTRY_DB ? `https://www.notion.so/${NOTION_PANTRY_DB.replace(/-/g, '')}` : null,
     dishes,
     meals,
+    grabAndGo,
     pantry,
   };
   await mkdir(dirname(OUT_FILE), { recursive: true });
   await writeFile(OUT_FILE, JSON.stringify(data, null, 2) + '\n');
-  console.log(`Wrote ${meals.length} meals, ${Object.keys(dishes).length} dishes and ${pantry.length} pantry items to ${OUT_FILE}`);
+  console.log(`Wrote ${meals.length} meals, ${Object.keys(dishes).length} dishes (${grabAndGo.length} grab and go) and ${pantry.length} pantry items to ${OUT_FILE}`);
 }
 
 main().catch((err) => {

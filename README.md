@@ -12,6 +12,7 @@ The app opens on **Today**. Home is one tap away in the tab bar.
 | Today / Day | `#/day` or `#/day/2026-09-29` | Breakfast, lunch and dinner cards with a collage of the main dish and its sides, the nutrients, plus day totals. Each card has a share button. Swipe or use the arrow keys to change day |
 | Meal | `#/meal/2026-09-29/dinner` | A header with tabs for the main dish and each side, the dish photo and details beside the recipe, the nutrition breakdown, ingredients you can tick off, and numbered steps. It can keep the screen on while you cook. The share button sends the meal on WhatsApp: one collage picture of all the dishes, the dish names and the meal's note, nothing else. **Share with recipe** adds a link that opens the meal in the app |
 | Week | `#/week` | Monday to Sunday with every meal, and the week's protein and calorie totals |
+| Grab and Go | `#/grab` | Quick office lunches: dishes ready in 10 minutes or less that pack well, planned or not. Tap one for its recipe. A 🔔 chip marks dishes that need soaking or sprouting ahead |
 | Prep | `#/prep` or `#/prep/4` | What to soak, sprout or ferment ahead for the next 2, 4 or 7 days, grouped by when to do it (tonight, tomorrow morning…), with tick boxes. The Today page shows a 🔔 chip when something is due within a day |
 | Settings | `#/settings` | Language (English, हिन्दी, मराठी), number of people, light or dark look. Saved on each device |
 | Shop | `#/shop` or `#/shop/2026-09-28/7` | Grocery list for the next few days, scaled for your household, grouped by aisle, with tick-off boxes and a Share button. It checks the Pantry in Notion: things you have are set aside, and anything running low is added |
@@ -46,7 +47,7 @@ The databases live under the **🥗 Meal Plan** page.
 | Serving | Text | What one serving is, for example "2 rotis" |
 | Serves | Number | How many people the recipe as written feeds. The app uses it to scale amounts and the grocery list. Leave it empty for things like flour blends |
 | Prep time (min) | Number | |
-| Tags | Multi-select | High protein, Vegetarian, Make ahead, Office-friendly |
+| Tags | Multi-select | High protein, Vegetarian, Make ahead, Office-friendly, Contains egg, Grab and Go. **Grab and Go** puts a dish on the Grab and Go page; so does Office-friendly with a prep time of 10 minutes or less |
 | Nutrition source | Select | Estimated or Verified |
 | Name (Hindi), Name (Marathi) | Text | Dish name in Hindi and Marathi |
 | Prep ahead | Text | Optional reminders for the Prep page, one per line: `Night before: Soak rajma`, `2 nights before: Soak moong to sprout`, `Morning before: …`, `4 hours before: …`. When empty, the app finds them in the recipe (see below) |

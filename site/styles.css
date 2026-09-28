@@ -109,11 +109,10 @@ main {
 }
 .tabbar a {
   display: flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 999px;
-  color: var(--ink-2); font-weight: 600; font-size: 15px; transition: background .25s, color .25s;
+  color: var(--ink-2); font-weight: 600; font-size: 15px; white-space: nowrap; transition: background .25s, color .25s;
 }
-.tabbar a svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.tabbar a svg { flex: none; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
 .tabbar a[aria-current="page"] { background: var(--accent); color: var(--accent-ink); }
-@media (max-width: 380px) { .tabbar a { padding: 10px 14px; } }
 
 /* Shared pieces */
 .eyebrow { font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
@@ -393,9 +392,15 @@ a.slot:hover { transform: scale(1.03); }
 .shop-amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ingredients input:checked + .shop-item .shop-name, .ingredients input:checked + .shop-item .shop-amt { text-decoration: line-through; color: var(--ink-3); }
 .shop-group .ingredients input:checked { background: var(--accent); border-color: var(--accent); }
-@media (max-width: 560px) {
+/* Seven tabs: icons only on narrower screens, the open tab keeps its label while it fits. */
+@media (max-width: 900px) {
   .tabbar a { padding: 10px 12px; gap: 6px; }
   .tabbar a:not([aria-current="page"]) span { display: none; }
+}
+@media (max-width: 480px) {
+  .tabbar { gap: 2px; }
+  .tabbar a { padding: 10px 11px; }
+  .tabbar a span { display: none; }
 }
 
 /* ---------- Settings ---------- */
@@ -740,3 +745,23 @@ body[data-page="meal"] main { max-width: none; }
 .meal-card .collage .photo { aspect-ratio: auto; min-height: 0; }
 body.fit .meal-card .photo-frame .collage { position: absolute; inset: 0; aspect-ratio: auto; }
 body.fit .meal-card .photo-frame .collage .photo { position: relative; inset: auto; }
+
+/* Grab and Go */
+body[data-page="grab"] main { max-width: none; }
+.grab-help { margin: -6px 0 18px; max-width: 70ch; }
+.grab-grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.grab-card { padding: 0; overflow: hidden; display: flex; flex-direction: column; transition: transform .2s, box-shadow .2s; }
+a.grab-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
+.grab-card .photo { aspect-ratio: 4 / 3; }
+.grab-card .body { padding: 16px 18px 18px; display: grid; gap: 10px; }
+.grab-card h3 { font-size: 22px; }
+.grab-card .meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.grab-card p { margin: 0; font-size: 14px; }
+@media (max-width: 599px) {
+  .grab-grid { grid-template-columns: 1fr; gap: 12px; }
+  .grab-card { flex-direction: row; }
+  .grab-card .photo { aspect-ratio: auto; width: 110px; flex: none; }
+  .grab-card .body { padding: 12px 14px; gap: 6px; }
+  .grab-card h3 { font-size: 18px; }
+  .grab-card p { display: none; }
+}
