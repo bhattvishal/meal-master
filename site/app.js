@@ -311,9 +311,11 @@ function dayPage(date) {
     <div class="meals">${SLOTS.map((slot, i) => card(slot, mealFor(date, slot), i)).join('')}</div>`;
 }
 
-function mealPage(date, slot, selectedId) {
-  const meal = mealFor(date, slot);
+// `grabId` shows one Grab and Go dish on its own, with the same recipe view as a planned meal.
+function mealPage(date, slot, selectedId, grabId = null) {
+  const meal = grabId ? (data.dishes[grabId] ? { id: 'grab', main: [grabId], sides: [] } : null) : mealFor(date, slot);
   const dishes = dishesOf(meal);
+  if (grabId && !dishes.length) return grabPage();
   if (!meal || !dishes.length) {
     return `<div class="error"><h1>${esc(t('noMeal', { meal: slotName(slot) }))}</h1><p class="muted">${fmt(date, { weekday: 'long', day: 'numeric', month: 'long' })}</p><a class="btn primary" href="#/day/${date}">${t('backToDay')}</a></div>`;
   }
@@ -355,12 +357,14 @@ function mealPage(date, slot, selectedId) {
   // A compact header instead of a big photo: the dishes already have their own photos below.
   return `
     <section class="panel meal-top meal-${slot} rise">
-      <a class="icon-btn" href="#/day/${date}" aria-label="${esc(t('backToDay'))}">${chevron('left')}</a>
+      <a class="icon-btn" href="${grabId ? '#/grab' : `#/day/${date}`}" aria-label="${esc(t(grabId ? 'grabBack' : 'backToDay'))}">${chevron('left')}</a>
       <div class="titles">
-        <div class="eyebrow"><span class="pill meal-${slot}"><span class="dot"></span>${slotName(slot)} · ${mealTime(meal, slot)}</span> ${esc(relDay(date))} · ${fmt(date, { day: 'numeric', month: 'long' })}</div>
+        <div class="eyebrow">${grabId
+          ? `<span class="pill meal-${slot}"><span class="dot"></span>${esc(t('grabTitle'))}</span>`
+          : `<span class="pill meal-${slot}"><span class="dot"></span>${slotName(slot)} · ${mealTime(meal, slot)}</span> ${esc(relDay(date))} · ${fmt(date, { day: 'numeric', month: 'long' })}`}</div>
         <h1>${esc(name(main))}${dishes.length > 1 ? ` <span class="sub">${t('with')} ${dishes.slice(1).map((d) => esc(name(d))).join(' & ')}</span>` : ''}</h1>
       </div>
-      <div class="share-group">${shareBtn(date, slot)}${shareRecipeBtn(date, slot)}</div>
+      ${grabId ? '' : `<div class="share-group">${shareBtn(date, slot)}${shareRecipeBtn(date, slot)}</div>`}
       ${dishes.length > 1 ? `<div class="dish-tabs" role="tablist">${dishes.map((d) => `
         <button class="dish-tab" role="tab" aria-selected="${d.id === dish.id}" data-dish="${d.id}">
           ${photo(d, slot)}<span><small>${t(d.role === 'main' ? 'main' : 'side')}</small>${esc(name(d))}</span>
@@ -408,6 +412,38 @@ function mealPage(date, slot, selectedId) {
         </article>
       </div>
     </div>
+    ${footer()}`;
+}
+
+// Dishes ready in 10 minutes or less that pack well for an office lunch. The sync lists them in
+// `grabAndGo`; older data without it falls back to the same rule over the dishes it has.
+const isGrabAndGo = (d) => d.tags?.includes('Grab and Go') || (d.tags?.includes('Office-friendly') && d.prepTime != null && d.prepTime <= 10);
+const needsPrepAhead = (d) => Boolean(d.prepAhead) || /\bsoaked\b|\bsprout(s|ed)?\b/i.test(JSON.stringify(d.sections ?? []));
+
+function grabPage() {
+  const ids = data.grabAndGo ?? Object.keys(data.dishes).filter((id) => isGrabAndGo(data.dishes[id]));
+  const list = ids.map((id) => data.dishes[id]).filter(Boolean)
+    .sort((a, b) => (a.prepTime ?? 99) - (b.prepTime ?? 99) || name(a).localeCompare(name(b)));
+  const card = (d, i) => `
+    <a class="panel grab-card meal-lunch rise" style="--i:${i + 1}" href="#/grab/${d.id}">
+      ${photo(d, 'lunch')}
+      <div class="body">
+        <h3>${esc(name(d))}</h3>
+        <div class="meta">
+          ${d.prepTime ? `<span class="chip">⏱ ${d.prepTime} ${t('min')}</span>` : ''}
+          ${d.nutrition?.protein != null ? `<span class="chip">💪 ${d.nutrition.protein} ${t('gProtein')}</span>` : ''}
+          ${d.nutrition?.calories != null ? `<span class="chip">🔥 ${d.nutrition.calories} ${kcal()}</span>` : ''}
+          ${needsPrepAhead(d) ? `<span class="chip prep-chip">🔔 ${esc(t('grabPrepAhead'))}</span>` : ''}
+        </div>
+        ${dishText(d, 'intro') ? `<p class="muted">${esc(dishText(d, 'intro'))}</p>` : ''}
+      </div>
+    </a>`;
+  return `
+    <header class="page-head rise">
+      <div class="titles"><div class="eyebrow">${esc(t('grabEyebrow'))}</div><h1>${esc(t('grabTitle'))}</h1></div>
+    </header>
+    <p class="muted grab-help rise">${esc(t('grabHelp'))}</p>
+    ${list.length ? `<div class="grab-grid">${list.map(card).join('')}</div>` : `<div class="panel"><p class="muted" style="margin:0">${esc(t('grabNone'))}</p></div>`}
     ${footer()}`;
 }
 
@@ -738,6 +774,7 @@ function route() {
       const days = Math.min(14, Math.max(1, Number(b) || 7));
       return { tab: 'shop', render: () => shopPage(from, days), swipe: (dir) => `#/shop/${addDays(from, dir * days)}/${days}` };
     }
+    case 'grab': return { tab: 'grab', render: () => (a ? mealPage(today(), 'lunch', null, a) : grabPage()) };
     case 'prep': return { tab: 'prep', render: () => prepPage([2, 4, 7].includes(Number(a)) ? Number(a) : 2) };
     case 'settings': return { tab: 'settings', fit: true, render: settingsPage };
     case 'meal': return { tab: 'day', render: () => mealPage(isDate(a) ? a : today(), b || 'dinner') };

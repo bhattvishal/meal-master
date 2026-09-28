@@ -39,6 +39,7 @@ const STRINGS = {
     person: '{n} person', people: '{n} people', fewer: 'Fewer people', more: 'More people',
     synced: 'Synced from {src} {when}', notion: 'Notion', snapshot: 'a saved snapshot', editNotion: 'Edit in Notion',
     rDaily: 'Every day', rWeekdays: 'Every weekday', rWeekends: 'Every weekend', rWeekly: 'Every week', draft: 'Claude draft',
+    tabGrab: 'Grab & Go', grabEyebrow: 'Office lunch', grabTitle: 'Grab and Go', grabHelp: 'Ready in 10 minutes or less and packs well for the office. Tag a dish Grab and Go in Notion to add it here.', grabNone: 'No grab-and-go dishes yet. Tag a dish Grab and Go in Notion, or mark a 10-minute dish Office-friendly.', grabPrepAhead: 'Needs prep ahead', grabBack: 'Back to Grab and Go',
     tabPrep: 'Prep', prepEyebrow: 'Prep ahead', prepTitle: 'Soak, sprout & set', prep2: 'Next 2 days', prep4: 'Next 4 days', prep7: 'Next 7 days',
     prepTasks: 'tasks', prepDoneCount: 'done', prepNow: 'Do now', tonight: 'Tonight', thisMorning: 'This morning', thisAfternoon: 'This afternoon',
     tomorrowMorning: 'Tomorrow morning', tomorrowAfternoon: 'Tomorrow afternoon', tomorrowEvening: 'Tomorrow evening',
@@ -93,6 +94,7 @@ const STRINGS = {
     person: '{n} व्यक्ति', people: '{n} लोग', fewer: 'कम लोग', more: 'ज़्यादा लोग',
     synced: '{src} से {when} को अपडेट', notion: 'Notion', snapshot: 'सहेजी गई कॉपी', editNotion: 'Notion में बदलें',
     rDaily: 'रोज़', rWeekdays: 'हर कामकाजी दिन', rWeekends: 'हर वीकेंड', rWeekly: 'हर हफ़्ते', draft: 'Claude का सुझाव',
+    tabGrab: 'झटपट टिफ़िन', grabEyebrow: 'ऑफ़िस का खाना', grabTitle: 'झटपट टिफ़िन', grabHelp: '10 मिनट या कम में तैयार, ऑफ़िस ले जाने में आसान। Notion में किसी डिश पर Grab and Go टैग लगाएँ तो वह यहाँ दिखेगी।', grabNone: 'अभी कोई झटपट टिफ़िन डिश नहीं है। Notion में Grab and Go टैग लगाएँ, या 10 मिनट वाली डिश पर Office-friendly लगाएँ।', grabPrepAhead: 'पहले से तैयारी चाहिए', grabBack: 'झटपट टिफ़िन पर वापस',
     tabPrep: 'तैयारी', prepEyebrow: 'पहले से तैयारी', prepTitle: 'भिगोना, अंकुरित करना, जमाना', prep2: 'अगले 2 दिन', prep4: 'अगले 4 दिन', prep7: 'अगले 7 दिन',
     prepTasks: 'काम', prepDoneCount: 'हो गए', prepNow: 'अभी करें', tonight: 'आज रात', thisMorning: 'आज सुबह', thisAfternoon: 'आज दोपहर',
     tomorrowMorning: 'कल सुबह', tomorrowAfternoon: 'कल दोपहर', tomorrowEvening: 'कल शाम',
@@ -147,6 +149,7 @@ const STRINGS = {
     person: '{n} व्यक्ती', people: '{n} जण', fewer: 'कमी जण', more: 'जास्त जण',
     synced: '{src} वरून {when} ला अद्ययावत', notion: 'Notion', snapshot: 'जतन केलेली प्रत', editNotion: 'Notion मध्ये बदला',
     rDaily: 'रोज', rWeekdays: 'दर कामाच्या दिवशी', rWeekends: 'दर शनिवार-रविवार', rWeekly: 'दर आठवड्याला', draft: 'Claude ची सूचना',
+    tabGrab: 'झटपट डबा', grabEyebrow: 'ऑफिसचे जेवण', grabTitle: 'झटपट डबा', grabHelp: '10 मिनिटांत किंवा कमी वेळात तयार, ऑफिसला नेण्यास सोपे. Notion मध्ये डिशला Grab and Go टॅग लावा म्हणजे ती इथे दिसेल.', grabNone: 'अजून झटपट डब्याच्या डिश नाहीत. Notion मध्ये Grab and Go टॅग लावा, किंवा 10 मिनिटांच्या डिशला Office-friendly लावा.', grabPrepAhead: 'आधी तयारी लागते', grabBack: 'झटपट डब्याकडे परत',
     tabPrep: 'तयारी', prepEyebrow: 'आधीची तयारी', prepTitle: 'भिजवणे, मोड आणणे, विरजणे', prep2: 'पुढचे 2 दिवस', prep4: 'पुढचे 4 दिवस', prep7: 'पुढचे 7 दिवस',
     prepTasks: 'कामे', prepDoneCount: 'झाली', prepNow: 'आत्ता करा', tonight: 'आज रात्री', thisMorning: 'आज सकाळी', thisAfternoon: 'आज दुपारी',
     tomorrowMorning: 'उद्या सकाळी', tomorrowAfternoon: 'उद्या दुपारी', tomorrowEvening: 'उद्या संध्याकाळी',
@@ -176,6 +179,7 @@ const TAGS = {
   Vegetarian: { hi: 'शाकाहारी', mr: 'शाकाहारी' },
   'Make ahead': { hi: 'पहले से बना सकते हैं', mr: 'आधी करून ठेवता येते' },
   'Office-friendly': { hi: 'ऑफ़िस के लिए', mr: 'ऑफिससाठी' },
+  'Grab and Go': { hi: 'झटपट टिफ़िन', mr: 'झटपट डबा' },
 };
 
 const UNITS = {
