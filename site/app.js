@@ -158,6 +158,8 @@ function proteinRing(protein) {
 
 const shareIcon = `<svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>`;
 const shareBtn = (date, slot, cls = 'icon-btn') => `<button class="${cls} share-meal" data-share-meal="${date}/${slot}" aria-label="${esc(t('shareMeal'))}" title="${esc(t('shareMeal'))}">${shareIcon}</button>`;
+const linkIcon = `<svg viewBox="0 0 24 24"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg>`;
+const shareRecipeBtn = (date, slot) => `<button class="btn small share-meal share-recipe" data-share-meal="${date}/${slot}/link" aria-label="${esc(t('shareRecipe'))}">${linkIcon}<span>${esc(t('shareRecipe'))}</span></button>`;
 const chevron = (dir) => `<svg viewBox="0 0 24 24"><path d="${dir === 'left' ? 'M15 5l-7 7 7 7' : 'M9 5l7 7-7 7'}"/></svg>`;
 
 const syncedAt = () => new Date(data.generatedAt).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' });
@@ -349,7 +351,7 @@ function mealPage(date, slot, selectedId) {
         <div class="eyebrow"><span class="pill meal-${slot}"><span class="dot"></span>${slotName(slot)} · ${mealTime(meal, slot)}</span> ${esc(relDay(date))} · ${fmt(date, { day: 'numeric', month: 'long' })}</div>
         <h1>${esc(name(main))}${dishes.length > 1 ? ` <span class="sub">${t('with')} ${dishes.slice(1).map((d) => esc(name(d))).join(' & ')}</span>` : ''}</h1>
       </div>
-      ${shareBtn(date, slot)}
+      <div class="share-group">${shareBtn(date, slot)}${shareRecipeBtn(date, slot)}</div>
       ${dishes.length > 1 ? `<div class="dish-tabs" role="tablist">${dishes.map((d) => `
         <button class="dish-tab" role="tab" aria-selected="${d.id === dish.id}" data-dish="${d.id}">
           ${photo(d, slot)}<span><small>${t(d.role === 'main' ? 'main' : 'side')}</small>${esc(name(d))}</span>
@@ -616,8 +618,9 @@ function settingsPage() {
     </div>`;
 }
 
-// Only what the cook needs: the main dish photo, dish names and the meal's note. No recipe, nutrition or link.
-function mealShareText(date, slot) {
+// Only what the cook needs: the main dish photo, dish names and the meal's note. No recipe or nutrition;
+// "Share with recipe" adds a link that opens this meal in the app.
+function mealShareText(date, slot, withLink = false) {
   const meal = mealFor(date, slot);
   const [main, ...sides] = dishesOf(meal);
   const lines = [
@@ -627,6 +630,7 @@ function mealShareText(date, slot) {
   ];
   if (sides.length) lines.push(`${t('shareWith')}: ${sides.map((d) => name(d)).join(', ')}`);
   if (meal.notes) lines.push('', `📝 ${t('shareNote')}: ${meal.notes}`);
+  if (withLink) lines.push('', `📖 ${t('shareRecipeLine')}: ${location.origin}${location.pathname}?m=${date}-${slot}`);
   return { text: lines.join('\n'), main };
 }
 
@@ -643,8 +647,8 @@ async function mealPhotoFile(dish) {
 }
 
 // The share sheet (WhatsApp, with the photo) where the browser has one; otherwise WhatsApp with the text.
-async function shareMeal(date, slot) {
-  const { text, main } = mealShareText(date, slot);
+async function shareMeal(date, slot, withLink) {
+  const { text, main } = mealShareText(date, slot, withLink);
   if (navigator.share) {
     const file = await mealPhotoFile(main);
     try {
@@ -800,8 +804,8 @@ app.addEventListener('click', async (e) => {
   if (shareMealBtn) {
     e.preventDefault();
     e.stopPropagation();
-    const [d, slot] = shareMealBtn.dataset.shareMeal.split('/');
-    shareMeal(d, slot);
+    const [d, slot, link] = shareMealBtn.dataset.shareMeal.split('/');
+    shareMeal(d, slot, link === 'link');
     return;
   }
   if (e.target.closest('[data-share]')) {
