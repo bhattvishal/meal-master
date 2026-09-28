@@ -1,7 +1,7 @@
 // Offline support. The deploy workflow replaces __BUILD__ with a hash of the code, so a code change
 // installs a new worker, and the app reloads itself onto the new version.
 const VERSION = 'mm-__BUILD__';
-const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'kitchen.js', 'prep.js', 'i18n.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png'];
+const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'kitchen.js', 'prep.js', 'collage.js', 'i18n.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));

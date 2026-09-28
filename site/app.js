@@ -9,6 +9,7 @@
 
 import { getPeople, setPeople, factorFor, scaleLine, buildGroceries, applyPantry, getGoals, setGoal, goalProgress, DEFAULT_GOALS } from './kitchen.js';
 import { prepTasks, SLOT_TIME } from './prep.js';
+import { mealCollage } from './collage.js';
 import { LANGS, getLang, setLang, locale, t, tag, unit, grocery, amount, dishText } from './i18n.js';
 
 const SLOTS = ['breakfast', 'lunch', 'dinner'];
@@ -156,6 +157,14 @@ function proteinRing(protein) {
   return `<span class="mini-ring${p.status ? ` ${p.status}` : ''}" style="--p:${Math.min(p.pct, 100)}" title="${esc(t('proteinGoalLine', { pct: p.pct, goal: p.goal }))}"><b>${p.pct}%</b></span>`;
 }
 
+// The main dish large with up to three sides stacked beside it; "+2" when there are more.
+function collage(dishes, slot) {
+  if (dishes.length < 2) return photo(dishes[0], slot);
+  const sides = dishes.slice(1, 4);
+  const more = dishes.length - 1 - sides.length;
+  return `<div class="collage sides-${sides.length}">${[dishes[0], ...sides].map((d) => photo(d, slot)).join('')}${more ? `<span class="more">+${more}</span>` : ''}</div>`;
+}
+
 const shareIcon = `<svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>`;
 const shareBtn = (date, slot, cls = 'icon-btn') => `<button class="${cls} share-meal" data-share-meal="${date}/${slot}" aria-label="${esc(t('shareMeal'))}" title="${esc(t('shareMeal'))}">${shareIcon}</button>`;
 const linkIcon = `<svg viewBox="0 0 24 24"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg>`;
@@ -262,7 +271,7 @@ function dayPage(date) {
     const n = sum(all);
     const sides = all.slice(1);
     return `<a class="meal-card meal-${slot} rise" style="--i:${i + 2}" href="#/meal/${date}/${slot}">
-      <div class="photo-frame">${photo(dish, slot)}
+      <div class="photo-frame">${collage(all, slot)}
         <span class="pill slot-pill"><span class="dot"></span>${slotName(slot)}</span>
         <span class="pill time-pill">🕒 ${mealTime(meal, slot)}</span>
         ${shareBtn(date, slot, 'icon-btn small')}
@@ -628,7 +637,7 @@ function shareHeading(date, slot) {
   return t(key, { day, meal });
 }
 
-// Only what the cook needs: the main dish photo, dish names and the meal's note. No recipe or nutrition;
+// Only what the cook needs: a collage of the dishes, dish names and the meal's note. No recipe or nutrition;
 // "Share with recipe" adds a link that opens this meal in the app.
 function mealShareText(date, slot, withLink = false) {
   const meal = mealFor(date, slot);
@@ -640,16 +649,22 @@ function mealShareText(date, slot, withLink = false) {
   ];
   if (meal.notes) lines.push('', `📝 ${t('shareNote')}: ${meal.notes}`);
   if (withLink) lines.push('', `📖 ${t('shareRecipeLine')}: ${location.origin}${location.pathname}?m=${date}-${slot}`);
-  return { text: lines.join('\n'), main: dishes[0] };
+  return { text: lines.join('\n') };
 }
 
-async function mealPhotoFile(dish) {
-  if (!dish.photo?.src || !navigator.canShare) return null;
+// One picture of every dish in the meal, with the heading, for the share sheet.
+async function mealCollageFile(date, slot) {
+  if (!navigator.canShare) return null;
   try {
-    const blob = await (await fetch(dish.photo.src)).blob();
-    const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
-    const file = new File([blob], `${dish.id}.${ext}`, { type: blob.type || 'image/jpeg' });
-    return navigator.canShare({ files: [file] }) ? file : null;
+    const css = getComputedStyle(document.documentElement);
+    const blob = await mealCollage({
+      heading: `${SLOT_EMOJI[slot] ?? '🍽️'} ${shareHeading(date, slot)}`,
+      dishes: dishesOf(mealFor(date, slot)).map((d) => ({ name: name(d), src: d.photo?.src, emoji: d.emoji })),
+      color: css.getPropertyValue(`--${slot}`).trim() || '#3f9b5a',
+      family: css.getPropertyValue('--sans').trim() || 'sans-serif',
+    });
+    const file = blob && new File([blob], `${date}-${slot}.jpg`, { type: 'image/jpeg' });
+    return file && navigator.canShare({ files: [file] }) ? file : null;
   } catch {
     return null;
   }
@@ -657,9 +672,9 @@ async function mealPhotoFile(dish) {
 
 // The share sheet (WhatsApp, with the photo) where the browser has one; otherwise WhatsApp with the text.
 async function shareMeal(date, slot, withLink) {
-  const { text, main } = mealShareText(date, slot, withLink);
+  const { text } = mealShareText(date, slot, withLink);
   if (navigator.share) {
-    const file = await mealPhotoFile(main);
+    const file = await mealCollageFile(date, slot);
     try {
       await navigator.share(file ? { files: [file], text } : { text });
       return;

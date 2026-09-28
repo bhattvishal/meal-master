@@ -725,3 +725,18 @@ body[data-page="meal"] main { max-width: none; }
 .btn.share-recipe { gap: 6px; background: var(--surface-2); box-shadow: none; white-space: nowrap; }
 .btn.share-recipe svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 @media (max-width: 599px) { .btn.share-recipe span { display: none; } .btn.share-recipe { width: 44px; height: 44px; padding: 0; justify-content: center; border-radius: 50%; } }
+
+/* Today cards: the main dish with its sides */
+.collage { position: relative; display: grid; grid-template-columns: 2fr 1fr; grid-template-rows: minmax(0, 1fr); gap: 2px; background: var(--surface); overflow: hidden; }
+.collage.sides-2 { grid-template-rows: repeat(2, minmax(0, 1fr)); }
+.collage.sides-3 { grid-template-rows: repeat(3, minmax(0, 1fr)); }
+.collage > .photo:first-child { grid-row: 1 / -1; }
+.collage > .photo ~ .photo .emoji { font-size: clamp(22px, 3vw, 40px); }
+.collage .more {
+  position: absolute; top: calc(66.7% + 6px); right: 6px; z-index: 1;
+  padding: 2px 8px; border-radius: 999px; background: rgba(0, 0, 0, .55); color: #fff; font-size: 13px; font-weight: 800;
+}
+.meal-card .collage { aspect-ratio: 4 / 3; }
+.meal-card .collage .photo { aspect-ratio: auto; min-height: 0; }
+body.fit .meal-card .photo-frame .collage { position: absolute; inset: 0; aspect-ratio: auto; }
+body.fit .meal-card .photo-frame .collage .photo { position: relative; inset: auto; }
