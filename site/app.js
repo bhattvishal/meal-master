@@ -156,6 +156,10 @@ function proteinRing(protein) {
   return `<span class="mini-ring${p.status ? ` ${p.status}` : ''}" style="--p:${Math.min(p.pct, 100)}" title="${esc(t('proteinGoalLine', { pct: p.pct, goal: p.goal }))}"><b>${p.pct}%</b></span>`;
 }
 
+const shareIcon = `<svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>`;
+const shareBtn = (date, slot, cls = 'icon-btn') => `<button class="${cls} share-meal" data-share-meal="${date}/${slot}" aria-label="${esc(t('shareMeal'))}" title="${esc(t('shareMeal'))}">${shareIcon}</button>`;
+const linkIcon = `<svg viewBox="0 0 24 24"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg>`;
+const shareRecipeBtn = (date, slot) => `<button class="btn small share-meal share-recipe" data-share-meal="${date}/${slot}/link" aria-label="${esc(t('shareRecipe'))}">${linkIcon}<span>${esc(t('shareRecipe'))}</span></button>`;
 const chevron = (dir) => `<svg viewBox="0 0 24 24"><path d="${dir === 'left' ? 'M15 5l-7 7 7 7' : 'M9 5l7 7-7 7'}"/></svg>`;
 
 const syncedAt = () => new Date(data.generatedAt).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' });
@@ -261,6 +265,7 @@ function dayPage(date) {
       <div class="photo-frame">${photo(dish, slot)}
         <span class="pill slot-pill"><span class="dot"></span>${slotName(slot)}</span>
         <span class="pill time-pill">🕒 ${mealTime(meal, slot)}</span>
+        ${shareBtn(date, slot, 'icon-btn small')}
       </div>
       <div class="body">
         <h3>${esc(name(dish))}</h3>
@@ -346,6 +351,7 @@ function mealPage(date, slot, selectedId) {
         <div class="eyebrow"><span class="pill meal-${slot}"><span class="dot"></span>${slotName(slot)} · ${mealTime(meal, slot)}</span> ${esc(relDay(date))} · ${fmt(date, { day: 'numeric', month: 'long' })}</div>
         <h1>${esc(name(main))}${dishes.length > 1 ? ` <span class="sub">${t('with')} ${dishes.slice(1).map((d) => esc(name(d))).join(' & ')}</span>` : ''}</h1>
       </div>
+      <div class="share-group">${shareBtn(date, slot)}${shareRecipeBtn(date, slot)}</div>
       ${dishes.length > 1 ? `<div class="dish-tabs" role="tablist">${dishes.map((d) => `
         <button class="dish-tab" role="tab" aria-selected="${d.id === dish.id}" data-dish="${d.id}">
           ${photo(d, slot)}<span><small>${t(d.role === 'main' ? 'main' : 'side')}</small>${esc(name(d))}</span>
@@ -612,6 +618,49 @@ function settingsPage() {
     </div>`;
 }
 
+// Only what the cook needs: the main dish photo, dish names and the meal's note. No recipe or nutrition;
+// "Share with recipe" adds a link that opens this meal in the app.
+function mealShareText(date, slot, withLink = false) {
+  const meal = mealFor(date, slot);
+  const [main, ...sides] = dishesOf(meal);
+  const lines = [
+    `${SLOT_EMOJI[slot] ?? '🍽️'} *${slotName(slot)}* · ${fmt(date, { weekday: 'long', day: 'numeric', month: 'long' })} · ${mealTime(meal, slot)}`,
+    '',
+    `*${name(main)}*`,
+  ];
+  if (sides.length) lines.push(`${t('shareWith')}: ${sides.map((d) => name(d)).join(', ')}`);
+  if (meal.notes) lines.push('', `📝 ${t('shareNote')}: ${meal.notes}`);
+  if (withLink) lines.push('', `📖 ${t('shareRecipeLine')}: ${location.origin}${location.pathname}?m=${date}-${slot}`);
+  return { text: lines.join('\n'), main };
+}
+
+async function mealPhotoFile(dish) {
+  if (!dish.photo?.src || !navigator.canShare) return null;
+  try {
+    const blob = await (await fetch(dish.photo.src)).blob();
+    const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+    const file = new File([blob], `${dish.id}.${ext}`, { type: blob.type || 'image/jpeg' });
+    return navigator.canShare({ files: [file] }) ? file : null;
+  } catch {
+    return null;
+  }
+}
+
+// The share sheet (WhatsApp, with the photo) where the browser has one; otherwise WhatsApp with the text.
+async function shareMeal(date, slot, withLink) {
+  const { text, main } = mealShareText(date, slot, withLink);
+  if (navigator.share) {
+    const file = await mealPhotoFile(main);
+    try {
+      await navigator.share(file ? { files: [file], text } : { text });
+      return;
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+    }
+  }
+  location.href = `https://wa.me/?text=${encodeURIComponent(text)}`;
+}
+
 function shopText() {
   const lines = [...app.querySelectorAll('.shop-group')].map((gr) => {
     const items = [...gr.querySelectorAll('li')]
@@ -751,6 +800,14 @@ app.addEventListener('click', async (e) => {
     rerender();
     return;
   }
+  const shareMealBtn = e.target.closest('[data-share-meal]');
+  if (shareMealBtn) {
+    e.preventDefault();
+    e.stopPropagation();
+    const [d, slot, link] = shareMealBtn.dataset.shareMeal.split('/');
+    shareMeal(d, slot, link === 'link');
+    return;
+  }
   if (e.target.closest('[data-share]')) {
     const text = shopText();
     try {
@@ -827,11 +884,20 @@ addEventListener('keydown', (e) => {
   if (e.key === 'ArrowLeft') location.hash = current.swipe(-1);
 });
 
-// Re-render when the app comes back to the foreground on a new day.
+// Pick up new data from Notion without a reload: when the app comes back to the
+// foreground, and every 10 minutes while it stays open. Only re-render if something changed.
 let shownDay = today();
+let lastCheck = Date.now();
+async function refresh() {
+  lastCheck = Date.now();
+  const before = data?.generatedAt;
+  try { await load(); } catch { return; }
+  if (data.generatedAt !== before || shownDay !== today()) { shownDay = today(); render(); }
+}
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && shownDay !== today()) { shownDay = today(); load().then(render); }
+  if (document.visibilityState === 'visible' && (shownDay !== today() || Date.now() - lastCheck > 60000)) refresh();
 });
+setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 10 * 60000);
 
 // ---------- start ----------
 
