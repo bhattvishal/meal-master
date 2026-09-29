@@ -1,12 +1,11 @@
-name: Sync from Notion and deploy
+name: Deploy site
+
+# Publishes site/ to GitHub Pages. Meal data no longer passes through here: the app reads it
+# live from the Cloudflare Worker in worker/, so this workflow needs no secrets.
 
 on:
   push:
     branches: [master]
-  schedule:
-    # Every 15 minutes (GitHub may start scheduled runs a few minutes late).
-    # Note: GitHub pauses schedules after 60 days without repo activity.
-    - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -24,24 +23,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Sync meals from Notion
-        env:
-          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          NOTION_DISHES_DB: ${{ vars.NOTION_DISHES_DB }}
-          NOTION_SCHEDULE_DB: ${{ vars.NOTION_SCHEDULE_DB }}
-          NOTION_COMBOS_DB: ${{ vars.NOTION_COMBOS_DB }}
-          NOTION_WHATSAPP_DB: ${{ vars.NOTION_WHATSAPP_DB }}
-          NOTION_PANTRY_DB: ${{ vars.NOTION_PANTRY_DB || '648fbd35e45147349998edb1ba16199e' }}
-        run: node scripts/sync-notion.mjs
-
-      # A hash of the app's code (not the meal data or photos), so the app reloads only when the code changed.
+      # A hash of the app's code, so installed apps reload only when the code changed.
       - name: Stamp build version
         run: |
-          BUILD=$(find site -type f -not -path 'site/data/*' -not -path 'site/images/*' | sort | xargs sha256sum | sha256sum | cut -c1-12)
+          BUILD=$(find site -type f | sort | xargs sha256sum | sha256sum | cut -c1-12)
           sed -i "s/__BUILD__/${BUILD}/" site/sw.js
 
       - uses: actions/configure-pages@v5

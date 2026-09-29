@@ -1,6 +1,6 @@
 # meal-master
 
-Meal Master is a small web app for your meal plan. It shows today's breakfast, lunch and dinner, the recipe for each dish, and the week ahead. The meals come from two Notion databases. The app is hosted on GitHub Pages and can be installed on an Android tablet as an app (a PWA).
+Meal Master is a small web app for your meal plan. It shows today's breakfast, lunch and dinner, the recipe for each dish, and the week ahead. The meals come from Notion through a small Cloudflare Worker, so changes in Notion show up within about a minute. The app is hosted on GitHub Pages and can be installed on an Android tablet as an app (a PWA).
 
 ## Pages
 
@@ -20,16 +20,18 @@ The app opens on **Today**. Home is one tap away in the tab bar.
 ## How it works
 
 ```
-Notion (Dishes + Meal Schedule)
-        │   every 15 minutes, on every push to master, or on demand
-        ▼
-GitHub Action ── scripts/sync-notion.mjs ──► site/data/meals.json + site/images/
+Notion (Meal Schedule, Dishes, Meal Combos, Pantry)
+        ▲  read live, and POST /meal writes back
         │
-        ▼
-GitHub Pages ──► the web app on your tablet (works offline)
+Cloudflare Worker (worker/) ── caches answers for about a minute
+        ▲  HTTPS + CORS (only the GitHub Pages site may call it)
+        │
+GitHub Pages (site/) ──► the installed app on your tablet (works offline with the last menu)
 ```
 
-The browser never talks to Notion directly. Notion doesn't allow that, and it would expose your API key. Instead, a GitHub Action reads Notion using a key kept in a GitHub secret. It writes the meals to a JSON file and downloads the photos, because Notion's photo links expire after an hour. Then it publishes the site.
+The browser never talks to Notion directly: Notion doesn't allow that, and it would expose the key. The **Worker** holds the Notion key as a Cloudflare secret, reads the meal plan when the app asks, and answers within about a minute of any change in Notion. No deploy or sync is needed. Photos go through the Worker too, because Notion's photo links expire after an hour.
+
+Every evening at 9 pm India time the Worker also sends tomorrow's menu on WhatsApp.
 
 ## Notion setup
 
@@ -41,7 +43,7 @@ The databases live under the **🥗 Meal Plan** page.
 | --- | --- | --- |
 | Name | Title | |
 | Type | Select | Main, Side, Snack or Drink |
-| Photo | Files | Your own photo. If it's empty, the sync finds a free photo on Wikimedia Commons |
+| Photo | Files | Your own photo. If it's empty, the Worker finds a free photo on Wikimedia Commons |
 | Photo search | Text | Optional. Better search words for the stock photo |
 | Protein (g), Carbs (g), Fat (g), Fibre (g), Calories (kcal) | Number | Per serving |
 | Serving | Text | What one serving is, for example "2 rotis" |
@@ -80,7 +82,7 @@ The databases live under the **🥗 Meal Plan** page.
 | Notes | Text | Shown on the meal page |
 | Planned by | Select | Me or Claude draft |
 
-**Pantry**: what's in the kitchen, one row per item. The Shop list reads it on every sync.
+**Pantry**: what's in the kitchen, one row per item. The Shop list reads it through the Worker.
 
 | Property | Type | Notes |
 | --- | --- | --- |
@@ -101,109 +103,121 @@ The page emoji you give a dish is used as its icon until it has a photo.
 
 **Hindi and Marathi recipes**: after the English recipe, add a heading `# हिन्दी` and write the Hindi version under it, using the same layout (`##` section headings, bullet lists for ingredients, numbered lists for steps). Do the same under `# मराठी`. Keep amounts in 0–9 digits so they can scale. When a translation is missing, the app shows the English text. Meal Combos also have Name (Hindi) and Name (Marathi) columns.
 
-## One-time setup
+## Setup
 
-1. **Create a Notion integration.** Go to <https://www.notion.so/profile/integrations>, create a new internal integration, and give it only "Read content". Copy its secret.
-2. **Share the Meal Plan page with it.** Open 🥗 Meal Plan in Notion, then choose **⋯ → Connections → Connect to** and pick your integration. All the databases are inside that page, so they're shared too.
-3. **Add the secret and IDs to GitHub.** In the repo, go to **Settings → Secrets and variables → Actions**:
-   - Secret `NOTION_TOKEN`: the integration secret.
-   - Variable `NOTION_DISHES_DB`: `770bc04d890a41a589192a1f8129d0ef`
-   - Variable `NOTION_SCHEDULE_DB`: `fdb3d2f43eee4a739ed7d8543a4bec9d`
-   - Variable `NOTION_COMBOS_DB`: `d194d343e1624d3da63e101beec3fdb7`
-   - Variable `NOTION_WHATSAPP_DB`: `3cae8d845e4f4c81bb8c15073d680295` (for the morning WhatsApp messages)
-   - Variable `NOTION_PANTRY_DB`: optional. The workflow uses the Pantry database (`648fbd35e45147349998edb1ba16199e`) when it isn't set
-4. **Make the repo public.** GitHub Pages only works for public repos on a free account. Go to **Settings → General → Danger Zone → Change visibility**. The repo holds no secrets: the Notion key lives in GitHub Secrets.
-5. **Turn on Pages.** Go to **Settings → Pages → Source** and choose **GitHub Actions**.
-6. **Publish.** Merge to `master`, or run **Actions → Sync from Notion and deploy → Run workflow**. The site will be at `https://bhattvishal.github.io/meal-master/`.
+### 1. Notion integration
 
-Until the secrets are set, the site uses the snapshot in `site/data/meals.json`.
+1. Go to <https://www.notion.so/profile/integrations> and create an **internal integration**. Give it **Read content**, **Update content** and **Insert content** (the app's `POST /meal` changes meals). Copy its secret. Don't paste it anywhere in this repo: it goes into Cloudflare only.
+2. Share the data with it: open **🥗 Meal Plan** in Notion → **•••** → **Connections** → add the integration. The databases are inside that page, so they're all shared.
 
-> GitHub Pages sites are public, even when the repo is private. Anyone with the link can see the meal data.
+### 2. Cloudflare Worker
 
-## Morning WhatsApp messages
+The Worker's code is in `worker/`, with its settings in `worker/wrangler.toml`. That file has no secrets and is safe to publish.
 
-Every day at 6 am India time, `.github/workflows/whatsapp.yml` sends today's meals on WhatsApp. Each person gets one message per meal (breakfast, lunch, snack, dinner), in their chosen language, with the dishes, time, protein, calories and a link to the recipe.
+**With wrangler** (Node 18 or later):
 
-It sends through **WhatsApp Business (Meta Cloud API)** when the settings below exist, and falls back to [CallMeBot](https://www.callmebot.com/blog/free-api-whatsapp-messages/) otherwise.
+```bash
+cd worker
+npm install
+npx wrangler login
+npx wrangler secret put NOTION_TOKEN     # the Notion integration secret
+npx wrangler secret put APP_PIN          # a PIN for changing meals from the app: use 8 or more characters
+npx wrangler deploy
+```
 
-### WhatsApp Business setup
+The deploy prints the Worker's address, like `https://meal-master.<your-subdomain>.workers.dev`.
 
-1. **Meta app**: at <https://developers.facebook.com>, an app with the WhatsApp use case. Under **WhatsApp → API Setup**, note the **Phone number ID** of the sending number. While using Meta's free test number, add each person in **To → Manage phone number list** (up to 5).
-2. **Permanent token**: in <https://business.facebook.com/settings/system-users>, a system user with the app and the WhatsApp account assigned, and a token that never expires with `whatsapp_business_messaging` and `whatsapp_business_management`.
-3. **Template**: in WhatsApp Manager → Message templates, a **Utility** template named `meal_photo` in English, Hindi and Marathi:
-   - **Header: Image.** Upload any food photo as the sample. Each message sends the main dish's photo from the site, or the Meal Master card (`site/icons/meal-card.png`) when a dish has no photo or it's over WhatsApp's 5 MB limit.
-   - **Body** with six blanks, filled in this order:
+**Or in the dashboard:** Cloudflare → **Workers & Pages → Create → Worker**, name it `meal-master`, then **Edit code**. Paste `worker/src/*.js` as files with the same names, keeping `index.js` as the main module, and deploy. Under **Settings → Variables and Secrets**, add the variables from the `[vars]` section of `wrangler.toml` as text, and `NOTION_TOKEN` and `APP_PIN` as secrets. Under **Settings → Triggers → Cron Triggers**, add `30 15 * * *`.
 
-     | Blank | Value | Example |
-     | --- | --- | --- |
-     | `{{1}}` | Meal | Breakfast |
-     | `{{2}}` | Time | 10:00 |
-     | `{{3}}` | Main dish | Protein Curd Bowl |
-     | `{{4}}` | Sides (or "—") | Seasonal Fruit |
-     | `{{5}}` | Protein in grams | 25 |
-     | `{{6}}` | Calories | 500 |
+**Recommended: a KV namespace.** It stores parsed recipes and photo lookups between requests, so a cold Worker doesn't have to fetch every recipe from Notion again. Create it with `npx wrangler kv namespace create MEAL_KV`, or Dashboard → **Storage & Databases → KV**. Then uncomment the `[[kv_namespaces]]` block in `wrangler.toml`, paste the id (it isn't a secret) and deploy again. In the dashboard, bind it under **Settings → Bindings** as `MEAL_KV`. Without KV the Worker still works: it falls back to the Cache API and memory, and its first call after a quiet spell fills recipes over a few requests. The app retries on its own.
 
-     English body:
-     ```
-     Today's meal: {{1}} at {{2}}
-     *{{3}}*
-     With: {{4}}
-     Protein {{5}} g · {{6}} kcal
-     Tap below to see the meal and recipe.
-     ```
-   - **Button: Visit website**, text "View meal", **Dynamic** URL `https://bhattvishal.github.io/meal-master/?m={{1}}`, sample `2026-09-29-breakfast`. The app turns `?m=2026-09-29-breakfast` into that meal's page.
+Settings:
 
-   A text-only template without photo or button also works: name it `meal_update`, give it seven body blanks (the six above plus the recipe link as `{{7}}`), and set the GitHub variable `WHATSAPP_TEMPLATE_KIND` = `text`.
-4. **GitHub**: secret `WHATSAPP_TOKEN`, and variables `WHATSAPP_PHONE_NUMBER_ID` and `NOTION_WHATSAPP_DB` = `3cae8d845e4f4c81bb8c15073d680295`. If the template's English was created as "English (US)", also add the variable `WHATSAPP_LANGUAGE_CODES` = `en=en_US`.
+| Name | Kind | What |
+| --- | --- | --- |
+| `NOTION_TOKEN` | secret | Notion integration secret |
+| `APP_PIN` | secret | PIN the app sends as `X-App-Pin` to change meals. The Worker doesn't limit attempts, so use 8 or more characters, not a 4-digit code |
+| `WA_TOKEN`, `WA_PHONE_ID` | secrets | WhatsApp Cloud API token and phone number id (optional) |
+| `WA_TO` | variable, set in the dashboard | Recipient number(s) with country code, comma-separated, e.g. `919812345678`. Kept out of `wrangler.toml` so the number isn't published; `keep_vars = true` keeps it when you deploy |
+| `MEAL_DS`, `DISH_DS`, `COMBO_DS`, `PANTRY_DS` | variables | Notion data source ids (already filled in) |
+| `ALLOWED_ORIGIN` | variable | The site allowed to call the Worker: `https://bhattvishal.github.io` |
+| `WA_TEMPLATE`, `WA_LANG` | variables | Approved WhatsApp template name and language code |
+| `SCHEDULE_URL`, `PANTRY_URL` | variables | Notion links the app shows |
+| `STOCK_PHOTOS` | variable, optional | `0` turns off Wikimedia photos for dishes without one |
+
+Check it: open `https://meal-master.<your-subdomain>.workers.dev/today`. An `{"error":"notion_404", "hint": …}` answer means the Meal Plan page isn't shared with the integration yet (step 1.2).
+
+### 3. Point the app at the Worker
+
+Put the Worker's address in `site/config.js` (`MEAL_API`) and merge to `master`. GitHub Pages publishes `site/` with `.github/workflows/deploy.yml`, which needs no secrets. The Notion and WhatsApp secrets that the old GitHub sync used (`NOTION_TOKEN`, `WHATSAPP_TOKEN`) can be deleted from the repo's **Settings → Secrets and variables → Actions**.
+
+> GitHub Pages sites and the Worker's GET endpoints are public: anyone with the link can see the meal plan. Changing meals needs the PIN.
+
+## Worker API
+
+| Endpoint | What |
+| --- | --- |
+| `GET /today` | Breakfast, lunch, dinner and snack for today (India time) |
+| `GET /day?date=YYYY-MM-DD` | The same for any date |
+| `GET /week?start=YYYY-MM-DD` | Seven days from `start` |
+| `GET /dish/:id` | A dish with its recipe (English, Hindi, Marathi) and the recipe as plain text |
+| `POST /meal` | Change a meal's Main, Sides or Notes: `{"date","meal","main"?,"sides"?,"notes"?}` with the header `X-App-Pin`. It updates that day's normal row. If only a repeat covers the day, it adds a normal row that overrides the repeat for that day |
+| `GET /whatsapp/preview` | Exactly what the 9 pm message would send for tomorrow (numbers masked), without sending |
+| `GET /data` | Everything the app shows: meals from 14 days back to 60 ahead, their dishes and recipes, Grab and Go dishes, the pantry |
+| `GET /photo/:id` | A dish photo, fetched fresh from Notion (or Wikimedia) each time |
+
+Each meal says how it was resolved. A normal row for the date wins. Otherwise the most recent matching repeat applies: Daily, Weekdays (Mon–Fri), Weekends or Weekly (same weekday as its Date), from its Date until Until. A Combo supplies Main and Sides unless the row sets its own.
+
+GET answers are cached for about 60 seconds, and `POST /meal` clears the ones it affects. Errors are JSON with a hint, e.g. `{"error":"notion_404","hint":"Share the Meal Plan page with the integration: …"}`.
+
+**Tests:** `cd worker && npm install && npm test` runs the Worker in Cloudflare's local runtime against a fake Notion. It checks repeats and overrides, combos, photos, the PIN, caching, CORS and the WhatsApp message.
+
+## WhatsApp at 9 pm
+
+The Worker's cron (`30 15 * * *` UTC, which is 21:00 IST) sends **tomorrow's** menu to `WA_TO` with the approved template `WA_TEMPLATE` in `WA_LANG`. Until `WA_TOKEN` and `WA_PHONE_ID` are set, it logs "skipping" and does nothing.
+
+1. **Meta app**: at <https://developers.facebook.com>, an app with the WhatsApp use case. Under **WhatsApp → API Setup**, note the **Phone number ID**. With Meta's free test number, add each recipient under **To → Manage phone number list**.
+2. **Permanent token**: in <https://business.facebook.com/settings/system-users>, a system user with the app and WhatsApp account assigned, and a token with `whatsapp_business_messaging`. Save it as the `WA_TOKEN` secret, and the phone number id as `WA_PHONE_ID`.
+3. **Template**: create and get approved a **Utility** template in WhatsApp Manager, then set `WA_TEMPLATE` (its name) and `WA_LANG` (e.g. `hi`).
+4. **Template values**: `templateParams()` at the top of `worker/src/whatsapp.js` is the one place that decides the `{{1}}`, `{{2}}`, … values. For now it sends the date, then breakfast, lunch and dinner as Hindi dish names joined with ", ". Change it to match your template.
+5. Open `/whatsapp/preview` to see the exact message before the first evening.
 
 Template messages are charged by Meta per message. Check Meta's price list for India.
 
-### Who gets the messages
-
-In Notion, open **🥗 Meal Plan → WhatsApp Recipients** and add a row per person: Name, Phone with country code (e.g. `+919812345678`), Language, and tick **Active**. The **CallMeBot key** column is only needed when sending through CallMeBot.
-
-### Testing
-
-Run **Actions → Send today's meals on WhatsApp → Run workflow** with a date that has meals. Tick "dry run" to print the photo link, template values and button link in the log without sending. The log says which service it used ("sending with WhatsApp Business …").
-
-GitHub sometimes starts scheduled runs a few minutes late, so messages may arrive shortly after 6 am.
-
 ## Install it on your Android tablet
 
-1. Open the site in Chrome.
-2. Tap **⋮ → Add to home screen → Install**.
-3. Say **"Hey Google, open Meal Master"**. The app opens on the home page, which shows today's meals.
+1. Open `https://bhattvishal.github.io/meal-master/` in Chrome.
+2. Tap **⋮ → Add to home screen → Install** (or **Install app**).
+3. Open **Meal Master** from the home screen. It runs full screen like an app and opens on Today. Long-press the icon for shortcuts to Home, Shop and Week.
 
-Long-press the app icon for shortcuts straight to **Today** and **Week**.
-
-Asking the assistant for a specific day or meal doesn't work with installed web apps; it can only open the app. So the app always starts on today.
+It keeps the last menu it loaded, so it still opens without internet and says "Offline, showing the last saved menu". When a new version of the app is published, it reloads itself the next time you open it or within about 10 minutes.
 
 ## Running it locally
 
 ```bash
-cd site && python3 -m http.server 8000   # then open http://localhost:8000
+cd worker && npx wrangler dev                      # the Worker on http://127.0.0.1:8787 (needs worker/.dev.vars with NOTION_TOKEN=… and APP_PIN=…)
+cd site && python3 -m http.server 8000             # then open http://localhost:8000/?api=http://127.0.0.1:8787
 ```
 
-To pull fresh data from Notion locally:
-
-```bash
-NOTION_TOKEN=secret_xxx NOTION_DISHES_DB=770bc04d890a41a589192a1f8129d0ef \
-NOTION_SCHEDULE_DB=fdb3d2f43eee4a739ed7d8543a4bec9d NOTION_COMBOS_DB=d194d343e1624d3da63e101beec3fdb7 \
-NOTION_PANTRY_DB=648fbd35e45147349998edb1ba16199e node scripts/sync-notion.mjs
-```
-
-The sync needs Node 18 or later and no extra packages.
+`?api=` works only on localhost. It points the app at your local Worker and is remembered until you clear the site's data. `worker/.dev.vars` is git-ignored.
 
 ## Project structure
 
 ```
 meal-master/
-├── .github/workflows/deploy.yml   Sync from Notion and publish to GitHub Pages
-├── .github/workflows/whatsapp.yml Morning WhatsApp messages
-├── scripts/sync-notion.mjs        Notion → site/data/meals.json and photos
-├── scripts/send-whatsapp.mjs      Sends today's meals (WhatsApp Business or CallMeBot)
+├── .github/workflows/deploy.yml   Publishes site/ to GitHub Pages (no secrets)
+├── worker/                        Cloudflare Worker: the API over Notion
+│   ├── wrangler.toml              Worker settings (no secrets)
+│   ├── src/index.js               Routes, CORS, PIN, caching, cron
+│   ├── src/data.js                Menus, recipes, photos and pantry from Notion
+│   ├── src/schedule.js            Repeat and combo rules
+│   ├── src/notion.js              Notion API client and page parsing
+│   ├── src/whatsapp.js            Tomorrow's menu on WhatsApp (templateParams is the one place to edit)
+│   ├── src/store.js               Response cache and stored recipes
+│   └── test/                      End-to-end tests against a fake Notion
 ├── site/                          The published web app
 │   ├── index.html
+│   ├── config.js                  The Worker's address (MEAL_API)
 │   ├── app.js                     Pages and navigation
 │   ├── kitchen.js                 Scaling amounts, the grocery list and the pantry check
 │   ├── prep.js                    Soak, sprout and ferment reminders
@@ -211,9 +225,8 @@ meal-master/
 │   ├── i18n.js                    English, Hindi and Marathi text
 │   ├── styles.css
 │   ├── sw.js                      Offline support
-│   ├── manifest.webmanifest       Makes it installable as an app
-│   ├── icons/
-│   └── data/meals.json            Meal data (a snapshot until the first sync)
+│   ├── manifest.json              Makes it installable as an app
+│   └── icons/
 ├── LICENSE
 └── README.md
 ```
