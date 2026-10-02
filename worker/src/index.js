@@ -1,11 +1,11 @@
-// Meal Master API: reads the meal plan from Notion live, writes meal changes back, and sends
-// tomorrow's menu on WhatsApp every evening. See worker/README section in the repo README.
+// Meal Master API: reads the meal plan from Notion live, writes meal changes back, and sends a
+// meal on WhatsApp when the app asks. See the Cloudflare Worker section of the repo README.
 
 import { ApiError, notion, queryAll, cleanId, isId, dashed, dishBase, ownPhotoUrl, recipeText } from './notion.js';
-import { appData, daysBetween, dishSummary, fillBodies, fillStock, loadCombos, loadScheduleRows, newBudget } from './data.js';
+import { appData, daysBetween, dishSummary, fillBodies, fillStock, loadCombos, loadScheduleRows, newBudget, bodyImageId } from './data.js';
 import { resolveMeals, istToday, addDays, SLOTS } from './schedule.js';
 import { getCached, putCached, purge, loadMap } from './store.js';
-import { preview, sendTomorrow } from './whatsapp.js';
+import { preview, sendMeal, recipients, pretty, missingConfig } from './whatsapp.js';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const isDate = (s) => DATE.test(s ?? '') && !Number.isNaN(Date.parse(`${s}T00:00:00Z`));
@@ -100,7 +100,7 @@ function parseMealBody(body) {
 
 // Paths whose cached answers include this date.
 const pathsFor = (date) => [
-  '/data', `/day?date=${date}`, '/whatsapp/preview',
+  '/data', `/day?date=${date}`, `/whatsapp/preview?date=${date}`,
   ...Array.from({ length: 7 }, (_, i) => `/week?start=${addDays(date, -i)}`),
 ];
 
@@ -160,6 +160,18 @@ async function updateMeal(request, env) {
   return json({ ok: true, action, id, date, meal });
 }
 
+// ---------- POST /whatsapp/send ----------
+
+// Sends one meal on WhatsApp: { date, meal, image? } where image is the app's collage as a JPEG data URL.
+async function whatsappSend(request, env, origin) {
+  checkPin(request, env);
+  let body;
+  try { body = await request.json(); } catch { throw new ApiError(400, 'bad_json', 'The body must be JSON.'); }
+  if (!isDate(body?.date)) throw new ApiError(400, 'bad_date', 'date must be YYYY-MM-DD.');
+  if (!SLOTS.includes(body?.meal)) throw new ApiError(400, 'bad_meal', `meal must be one of ${SLOTS.join(', ')}.`);
+  return json(await sendMeal(env, { date: body.date, meal: body.meal, image: body.image ?? null }, origin));
+}
+
 // ---------- GET /photo/:id ----------
 
 // Streams a dish photo with a fresh Notion link each time (they expire after about an hour).
@@ -172,6 +184,16 @@ async function photo(id, request, env, ctx) {
   const budget = newBudget(env);
   const page = await notion(env, `pages/${dashed(id)}`, { budget });
   let src = ownPhotoUrl(page);
+  if (!src) {
+    // An image placed inside the dish page: its stored block id, or the first one found now.
+    const base = dishBase(page);
+    let blockId = bodyImageId(base, await loadMap(env, 'bodies'));
+    if (!blockId) blockId = (await fillBodies(env, [{ base, page }], budget)).bodies[page.id]?.image ?? null;
+    if (blockId) {
+      const block = await notion(env, `blocks/${blockId}`, { budget });
+      src = block.image?.file?.url ?? block.image?.external?.url ?? null;
+    }
+  }
   if (!src) {
     const stock = await loadMap(env, 'stock');
     src = stock[page.id]?.url ?? null;
@@ -203,7 +225,7 @@ async function dish(id, env, origin) {
   const entry = { base: dishBase(page), page };
   const [{ bodies }, stock] = await Promise.all([fillBodies(env, [entry], budget), loadMap(env, 'stock')]);
   const body = bodies[page.id]?.body ?? { en: { intro: '', sections: [] } };
-  return { ...dishSummary(entry, stock, origin), notionUrl: page.url, prepAhead: entry.base.prepAhead, recipe: body, text: recipeText(body) };
+  return { ...dishSummary(entry, stock, origin, bodies), notionUrl: page.url, prepAhead: entry.base.prepAhead, recipe: body, text: recipeText(body) };
 }
 
 // ---------- router ----------
@@ -214,10 +236,11 @@ async function route(request, env, ctx) {
   const origin = env.PUBLIC_URL?.replace(/\/$/, '') || url.origin;
 
   if (request.method === 'POST' && path === '/meal') return updateMeal(request, env);
-  if (request.method !== 'GET') throw new ApiError(405, 'method_not_allowed', 'Use GET, or POST /meal.');
+  if (request.method === 'POST' && path === '/whatsapp/send') return whatsappSend(request, env, origin);
+  if (request.method !== 'GET') throw new ApiError(405, 'method_not_allowed', 'Use GET, or POST /meal or /whatsapp/send.');
 
   if (path === '/' || path === '/health') {
-    return json({ ok: true, today: istToday(), endpoints: ['/today', '/day?date=', '/week?start=', '/dish/:id', '/data', '/photo/:id', 'POST /meal', '/whatsapp/preview'] });
+    return json({ ok: true, today: istToday(), endpoints: ['/today', '/day?date=', '/week?start=', '/dish/:id', '/data', '/photo/:id', 'POST /meal', '/whatsapp/preview?date=', '/whatsapp/recipients', 'POST /whatsapp/send'] });
   }
   if (path === '/today' || path === '/day') {
     const date = path === '/today' ? istToday() : q.get('date');
@@ -237,7 +260,17 @@ async function route(request, env, ctx) {
   if (dishMatch) return cached(ctx, `/dish/${cleanId(dishMatch[1])}`, () => dish(dishMatch[1], env, origin));
   const photoMatch = path.match(/^\/photo\/([0-9a-fA-F-]{32,36})$/);
   if (photoMatch) return photo(photoMatch[1], request, env, ctx);
-  if (path === '/whatsapp/preview') return cached(ctx, '/whatsapp/preview', () => preview(env, origin));
+  if (path === '/whatsapp/preview') {
+    const date = q.get('date') || istToday();
+    if (!isDate(date)) throw new ApiError(400, 'bad_date', 'Use /whatsapp/preview?date=YYYY-MM-DD.');
+    return cached(ctx, `/whatsapp/preview?date=${date}`, () => preview(env, origin, date));
+  }
+  if (path === '/whatsapp/recipients') {
+    // Who the app's WhatsApp button sends to, for its confirmation dialog. Needs the PIN,
+    // because these are real phone numbers.
+    checkPin(request, env);
+    return json({ to: recipients(env).map(pretty), ready: !missingConfig(env).length, missing: missingConfig(env) });
+  }
   throw new ApiError(404, 'not_found', 'Unknown endpoint. GET / lists them.');
 }
 
@@ -254,9 +287,5 @@ export default {
     return withCors(response, request, env);
   },
 
-  // 21:00 IST: tomorrow's menu on WhatsApp.
-  async scheduled(event, env, ctx) {
-    ctx.waitUntil(sendTomorrow(env, env.PUBLIC_URL || ''));
-  },
 };
 

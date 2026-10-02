@@ -59,11 +59,16 @@ export async function mealsBetween(env, from, to, budget) {
 
 // ---------- photos ----------
 
+// The id of the first image block in the dish page, when its parsed body is current.
+export const bodyImageId = (base, bodies) => (bodies?.[base.id]?.edited === base.edited ? bodies[base.id].image ?? null : null);
+
 // The app loads every photo through /photo/:id, which fetches a fresh Notion link each time and
 // adds CORS headers (so the share collage can draw it). `url` is the fresh original link itself.
-export function photoOf({ base, page }, stock, origin) {
+export function photoOf({ base, page }, stock, origin, bodies) {
   const own = ownPhotoUrl(page);
   if (own) return { src: `${origin}/photo/${base.id}?v=${encodeURIComponent(base.edited)}`, url: own, credit: null };
+  // An image placed inside the dish page (its link is fetched fresh by /photo).
+  if (bodyImageId(base, bodies)) return { src: `${origin}/photo/${base.id}?v=${encodeURIComponent(base.edited)}`, url: null, credit: null };
   const s = stock?.[base.id];
   if (s?.url) {
     return {
@@ -102,11 +107,11 @@ const STOCK_RETRY_MS = 7 * 86400000;
 
 // Looks up stock photos for dishes without their own, as far as the budget allows.
 // Results (including "nothing found") are remembered, keyed by the search words.
-export async function fillStock(env, entries, budget) {
+export async function fillStock(env, entries, budget, bodies) {
   const stock = await loadMap(env, 'stock');
   if (env.STOCK_PHOTOS === '0') return { stock, incomplete: false };
   const wanted = entries.filter(({ base, page }) => {
-    if (ownPhotoUrl(page)) return false;
+    if (ownPhotoUrl(page) || bodyImageId(base, bodies)) return false;
     const s = stock[base.id];
     const q = base.photoSearch || base.name;
     return !s || s.q !== q || (!s.url && Date.now() - (s.at ?? 0) > STOCK_RETRY_MS);
@@ -137,8 +142,8 @@ export async function fillBodies(env, entries, budget) {
   await eachLimited(stale, 3, async ({ base }) => {
     if (budget.left < 1) { incomplete = true; return; }
     try {
-      const body = parseBody(await blocksOf(env, base.id, budget));
-      bodies[base.id] = { edited: base.edited, body };
+      const blocks = await blocksOf(env, base.id, budget);
+      bodies[base.id] = { edited: base.edited, body: parseBody(blocks), image: blocks.find((b) => b.type === 'image')?.id ?? null };
       changed = true;
     } catch (err) {
       if (err.error === 'busy') incomplete = true;
@@ -152,7 +157,7 @@ export async function fillBodies(env, entries, budget) {
 // ---------- shapes ----------
 
 // A dish as the day/week/today endpoints return it.
-export function dishSummary(entry, stock, origin) {
+export function dishSummary(entry, stock, origin, bodies) {
   const { base } = entry;
   return {
     id: base.id,
@@ -164,7 +169,7 @@ export function dishSummary(entry, stock, origin) {
     tags: base.tags,
     prepTime: base.prepTime,
     macros: base.nutrition,
-    photo: photoOf(entry, stock, origin),
+    photo: photoOf(entry, stock, origin, bodies),
   };
 }
 
@@ -183,7 +188,7 @@ function appDish(entry, stock, bodies, origin) {
     type: base.type,
     category: base.category,
     emoji: base.emoji,
-    photo: photoOf(entry, stock, origin),
+    photo: photoOf(entry, stock, origin, bodies),
     nutrition: base.nutrition,
     nutritionSource: base.nutritionSource,
     serving: base.serving,
@@ -199,8 +204,8 @@ function appDish(entry, stock, bodies, origin) {
   };
 }
 
-function mealOut(meal, dishes, stock, origin) {
-  const expand = (ids) => ids.map((id) => dishes.get(id)).filter(Boolean).map((e) => dishSummary(e, stock, origin));
+function mealOut(meal, dishes, stock, origin, bodies) {
+  const expand = (ids) => ids.map((id) => dishes.get(id)).filter(Boolean).map((e) => dishSummary(e, stock, origin, bodies));
   return {
     id: meal.id,
     row: meal.rowId,
@@ -220,11 +225,11 @@ function mealOut(meal, dishes, stock, origin) {
 // { date, meals: { breakfast, lunch, dinner, snack } } for each day from `from` to `to`.
 export async function daysBetween(env, from, to, origin) {
   const budget = newBudget(env);
-  const [{ meals, dishes }, stock] = await Promise.all([mealsBetween(env, from, to, budget), loadMap(env, 'stock')]);
+  const [{ meals, dishes }, stock, bodies] = await Promise.all([mealsBetween(env, from, to, budget), loadMap(env, 'stock'), loadMap(env, 'bodies')]);
   const days = [];
   for (let date = from; date <= to; date = addDays(date, 1)) {
     const out = Object.fromEntries(SLOTS.map((s) => [s, null]));
-    for (const m of meals.filter((x) => x.date === date)) out[m.meal] = mealOut(m, dishes, stock, origin);
+    for (const m of meals.filter((x) => x.date === date)) out[m.meal] = mealOut(m, dishes, stock, origin, bodies);
     days.push({ date, meals: out });
   }
   return days;
@@ -237,7 +242,7 @@ export async function appData(env, origin) {
   const today = istToday();
   const from = addDays(today, -Number(env.PAST_DAYS ?? 14));
   const to = addDays(today, Number(env.FUTURE_DAYS ?? 60));
-  const [{ meals, dishes }, pantry] = await Promise.all([mealsBetween(env, from, to, budget), loadPantry(env, budget)]);
+  const [{ meals, dishes }, pantry, snackFillers] = await Promise.all([mealsBetween(env, from, to, budget), loadPantry(env, budget), loadFillers(env, budget)]);
 
   const grabAndGo = [...dishes.values()].filter((e) => isGrabAndGo(e.base)).map((e) => e.base.id);
   const used = new Set([...meals.flatMap((m) => [...m.main, ...m.sides]), ...grabAndGo]);
@@ -246,7 +251,7 @@ export async function appData(env, origin) {
   const entries = order.map((id) => dishes.get(id)).filter(Boolean);
 
   const { bodies, incomplete: bodiesLeft } = await fillBodies(env, entries, budget);
-  const { stock, incomplete: stockLeft } = await fillStock(env, entries, budget);
+  const { stock, incomplete: stockLeft } = await fillStock(env, entries, budget, bodies);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -257,9 +262,34 @@ export async function appData(env, origin) {
     dishes: Object.fromEntries(entries.map((e) => [e.base.id, appDish(e, stock, bodies, origin)])),
     meals: meals.map(({ rowId, ...m }) => m),
     grabAndGo,
+    snackFillers,
     pantry,
     ...(bodiesLeft || stockLeft ? { incomplete: true } : {}),
   };
+}
+
+// No-prep things for the Office Snack Box, each with its nutrition per portion.
+export async function loadFillers(env, budget) {
+  if (!env.FILLER_DS) return [];
+  const rows = await queryAll(env, env.FILLER_DS, { budget });
+  return rows
+    .filter((p) => !p.properties?.Hide?.checkbox && prop(p, 'Name'))
+    .map((p) => ({
+      id: p.id,
+      name: prop(p, 'Name'),
+      i18n: { hi: prop(p, 'Name (Hindi)'), mr: prop(p, 'Name (Marathi)') },
+      emoji: p.icon?.type === 'emoji' ? p.icon.emoji : null,
+      portion: prop(p, 'Portion'),
+      default: Boolean(p.properties?.Default?.checkbox),
+      nutrition: {
+        protein: prop(p, 'Protein (g)'),
+        carbs: prop(p, 'Carbs (g)'),
+        fat: prop(p, 'Fat (g)'),
+        fibre: prop(p, 'Fibre (g)'),
+        calories: prop(p, 'Calories (kcal)'),
+      },
+    }))
+    .sort((a, b) => Number(b.default) - Number(a.default) || a.name.localeCompare(b.name));
 }
 
 const PANTRY_STATUS = { 'In stock': 'in', 'Running low': 'low', 'Out of stock': 'out' };

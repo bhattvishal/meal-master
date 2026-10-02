@@ -512,6 +512,8 @@ body.fit .settings .panel:last-child { grid-column: 1 / -1; }
   body.fit .meal-card .cta { margin-top: 0; font-size: 14px; }
   body.fit .meal-card .photo-frame .slot-pill { left: 10px; top: 10px; }
   body.fit .meal-card .photo-frame .time-pill { top: auto; bottom: 10px; right: auto; left: 10px; }
+  /* Share and WhatsApp stack down the right edge so the time stays readable. */
+  body.fit .meal-card .photo-frame .card-actions { flex-direction: column; gap: 6px; right: 8px; bottom: auto; top: 50%; transform: translateY(-50%); }
 
   body.fit .home-hero { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); align-items: start; }
   body.fit .plate-wrap { width: min(100%, 34vh, 460px); align-self: center; }
@@ -722,14 +724,15 @@ body[data-page="meal"] main { max-width: none; }
 }
 
 /* Share a meal (WhatsApp or the share sheet) */
-.share-meal { flex: none; cursor: pointer; border: 0; color: var(--ink); }
-.meal-top .share-meal { background: var(--surface-2); box-shadow: none; }
-.meal-card .photo-frame .share-meal { position: absolute; right: 12px; bottom: 12px; z-index: 1; box-shadow: var(--shadow); }
-.icon-btn.small.share-meal svg { width: 18px; height: 18px; }
+.share-meal, .wa-meal { flex: none; cursor: pointer; border: 0; color: var(--ink); }
+.meal-top .share-meal, .meal-top .wa-meal { background: var(--surface-2); box-shadow: none; }
+.wa-meal { color: #fff; }
+.wa-meal, .meal-top .wa-meal { background: #25d366; }
+.wa-meal .wa-glyph { fill: currentColor; stroke: none; }
+.meal-card .photo-frame .card-actions { position: absolute; right: 12px; bottom: 12px; z-index: 1; display: flex; gap: 8px; }
+.meal-card .photo-frame .card-actions .icon-btn { box-shadow: var(--shadow); }
+.icon-btn.small.share-meal svg, .icon-btn.small.wa-meal svg { width: 18px; height: 18px; }
 .meal-top .share-group { display: flex; align-items: center; gap: 8px; flex: none; }
-.btn.share-recipe { gap: 6px; background: var(--surface-2); box-shadow: none; white-space: nowrap; }
-.btn.share-recipe svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-@media (max-width: 599px) { .btn.share-recipe span { display: none; } .btn.share-recipe { width: 44px; height: 44px; padding: 0; justify-content: center; border-radius: 50%; } }
 
 /* Today cards: the main dish with its sides */
 .collage { position: relative; display: grid; grid-template-columns: 2fr 1fr; grid-template-rows: minmax(0, 1fr); gap: 2px; background: var(--surface); overflow: hidden; }
@@ -773,3 +776,38 @@ a.grab-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
   background: color-mix(in srgb, #e08a00 22%, var(--surface)); color: var(--ink); box-shadow: var(--shadow);
 }
 .offline-note[hidden] { display: none; }
+
+/* Office Snack Box: fillers and one Grab and Go dish, side by side */
+.snack-builder { display: grid; gap: 18px; grid-template-columns: 1fr 1fr; align-items: start; }
+@media (max-width: 699px) { .snack-builder { grid-template-columns: 1fr; } }
+.snack-col h3 { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.snack-col .count { font-family: var(--sans); font-size: 13px; font-weight: 700; color: var(--ink-3); }
+.pick-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.pick-row { display: flex; align-items: center; gap: 8px; }
+.pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 14px; background: var(--surface-2); cursor: pointer; border: 2px solid transparent; transition: border-color .15s, background .15s; }
+.pick.on { border-color: var(--meal, var(--accent)); background: color-mix(in srgb, var(--meal, var(--accent)) 12%, var(--surface)); }
+.pick.off { opacity: .5; cursor: not-allowed; }
+.pick input { width: 20px; height: 20px; flex: none; accent-color: var(--meal, var(--accent)); }
+.pick-emoji { width: 40px; height: 40px; flex: none; display: grid; place-items: center; font-size: 24px; border-radius: 10px; background: var(--surface); }
+.pick .photo { width: 40px; height: 40px; flex: none; border-radius: 10px; }
+.pick .photo .emoji { font-size: 22px; animation: none; }
+.pick-text { min-width: 0; display: grid; }
+.pick-text b { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pick-text small { color: var(--ink-3); font-size: 12px; }
+.recipe-link { flex: none; background: var(--surface-2); box-shadow: none; }
+.recipe-link svg { width: 18px; height: 18px; }
+
+/* Confirmation dialog and status toast */
+.app-dialog { border: 0; border-radius: 24px; padding: 0; max-width: min(420px, calc(100vw - 32px)); background: var(--surface); color: var(--ink); box-shadow: var(--shadow-lg); }
+.app-dialog::backdrop { background: rgba(0, 0, 0, .4); }
+.app-dialog form { padding: 22px; display: grid; gap: 14px; }
+.app-dialog h2 { font-size: 22px; }
+.app-dialog p { margin: 0; color: var(--ink-2); }
+.app-dialog input { font: inherit; font-size: 20px; letter-spacing: .2em; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); }
+.app-dialog .actions { display: flex; justify-content: flex-end; gap: 10px; }
+.toast {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--tabbar-h, 70px) + 28px + env(safe-area-inset-bottom)); z-index: 40;
+  max-width: calc(100vw - 32px); padding: 10px 18px; border-radius: 999px; background: var(--ink); color: var(--surface); font-weight: 700; box-shadow: var(--shadow-lg);
+}
+.toast.ok { background: #1f8f4e; color: #fff; }
+.toast.error { background: #b3261e; color: #fff; }
