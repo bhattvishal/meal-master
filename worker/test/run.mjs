@@ -262,7 +262,7 @@ try {
     assert.equal(body.ready, false);
     const breakfast = body.messages.find((m) => m.meal === 'breakfast');
     assert.deepEqual(breakfast.params, ['Breakfast', '🍽️ Poha', '🍽️ Mosambi Juice', '—']);
-    assert.equal(breakfast.text, "Today's Meal\nBreakfast\n\nMain: 🍽️ Poha\nSides: 🍽️ Mosambi Juice\nInstructions: —");
+    assert.equal(breakfast.text, "Today's Meal\nBreakfast\n\nMain: 🍽️ Poha\nSides: 🍽️ Mosambi Juice\nInstructions: —\n\nTap below for the full recipe.");
     const dinner = body.messages.find((m) => m.meal === 'dinner');
     assert.deepEqual(dinner.params.slice(1, 3), ['🍽️ Dal Fry (Toor)', '🍽️ Plain Rice • 🍽️ Multigrain Roti']);
   });

@@ -8,6 +8,8 @@
 //           Main: {{2}}
 //           Sides: {{3}}
 //           Instructions: {{4}}
+//
+//           Tap below for the full recipe.
 //   Button: Visit website, dynamic URL https://bhattvishal.github.io/meal-master/?m={{1}}
 //
 // The header image is the meal collage the app draws and sends with the request.
@@ -39,7 +41,7 @@ export function templateParams(meal) {
 }
 
 // The template body with the values filled in, as the cook will read it.
-export const renderText = (p) => `Today's Meal\n${p[0]}\n\nMain: ${p[1]}\nSides: ${p[2]}\nInstructions: ${p[3]}`;
+export const renderText = (p) => `Today's Meal\n${p[0]}\n\nMain: ${p[1]}\nSides: ${p[2]}\nInstructions: ${p[3]}\n\nTap below for the full recipe.`;
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const recipients = (env) => String(env.WA_TO ?? '').split(',').map((n) => n.replace(/[^\d]/g, '')).filter(Boolean);
