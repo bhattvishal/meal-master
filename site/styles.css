@@ -811,3 +811,4 @@ a.grab-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
 }
 .toast.ok { background: #1f8f4e; color: #fff; }
 .toast.error { background: #b3261e; color: #fff; }
+.dish-facts { display: contents; }

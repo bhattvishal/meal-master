@@ -195,6 +195,8 @@ Lunch
 Main: 🫓 Paneer or Chana Wrap
 Sides: 🍚 Plain Rice • 🥣 Dal Fry (Toor) • 🥗 Green Salad
 Instructions: Pack by 8:30
+
+Tap below for the full recipe.
 [View recipe]
 ```
 
@@ -215,8 +217,10 @@ Setup:
      Main: {{2}}
      Sides: {{3}}
      Instructions: {{4}}
+
+     Tap below for the full recipe.
      ```
-     Samples: `Lunch`, `🫓 Paneer Wrap`, `🍚 Plain Rice • 🥣 Dal Fry (Toor)`, `Pack by 8:30`.
+     The last line is needed: Meta rejects a template whose body ends with a variable. Samples: `Lunch`, `🫓 Paneer Wrap`, `🍚 Plain Rice • 🥣 Dal Fry (Toor)`, `Pack by 8:30`.
    - **Button: Visit website**, text "View recipe", **Dynamic** URL `https://bhattvishal.github.io/meal-master/?m={{1}}`, sample `2026-10-05-lunch`. The app opens that meal.
 4. In the Worker's dashboard settings, set `WA_TO` (e.g. `919812345678`) and `WA_TEMPLATE` (the template's name). `WA_LANG` is `en`.
 5. Open `/whatsapp/preview` to check the message, then try the button on a meal.
