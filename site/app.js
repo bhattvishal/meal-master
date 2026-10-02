@@ -1,4 +1,4 @@
-// Meal Master: a small hash-routed app over data/meals.json (written by scripts/sync-notion.mjs).
+// Meal Master: a small hash-routed app over the meal data the Worker (worker/) reads live from Notion.
 //   #/ or #/day[/YYYY-MM-DD] breakfast, lunch and dinner for a day (the app opens here)
 //   #/home                   animated overview of today
 //   #/meal/YYYY-MM-DD/slot   one meal with its dishes and recipes
@@ -118,7 +118,7 @@ function photo(dish, slot, { credit = false, eager = false } = {}) {
     const c = credit && dish.photo.credit
       ? `<a class="credit" href="${esc(dish.photo.sourceUrl)}" target="_blank" rel="noopener">📷 ${esc(dish.photo.credit)}${dish.photo.license ? ` · ${esc(dish.photo.license)}` : ''}</a>`
       : '';
-    return `<div class="photo"><img src="${esc(dish.photo.src)}" alt="${esc(name(dish))}" loading="${eager ? 'eager' : 'lazy'}" decoding="async">${c}</div>`;
+    return `<div class="photo"><img src="${esc(dish.photo.src)}" alt="${esc(name(dish))}" crossorigin="anonymous" data-emoji="${esc(dish.emoji || SLOT_EMOJI[slot] || '🍽️')}" loading="${eager ? 'eager' : 'lazy'}" decoding="async">${c}</div>`;
   }
   const emoji = dish?.emoji || SLOT_EMOJI[slot] || '🍽️';
   return `<div class="photo placeholder" role="img" aria-label="${esc(dish ? name(dish) : t('notPlanned'))}"><span class="emoji">${emoji}</span></div>`;
@@ -955,6 +955,7 @@ async function refresh() {
   swReg?.update().catch(() => {});
   const before = data?.generatedAt;
   try { await load(); } catch { return; }
+  showOffline();
   if (data.generatedAt !== before || shownDay !== today()) { shownDay = today(); render(); }
 }
 document.addEventListener('visibilitychange', () => {
@@ -964,11 +965,42 @@ setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 10
 
 // ---------- start ----------
 
+// Everything comes from the Meal Master Worker, which reads Notion live (address in config.js).
+// When the tablet is offline, the service worker answers with the last saved menu and marks it.
+const API = /YOUR-SUBDOMAIN/.test(self.MEAL_API ?? '') ? '' : String(self.MEAL_API ?? '').replace(/\/$/, '');
+let offline = false;
+let fillRetries = 0;
 async function load() {
-  const res = await fetch('data/meals.json', { cache: 'no-cache' });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!API) throw new Error(t('apiMissing'));
+  const res = await fetch(`${API}/data`, { cache: 'no-store' });
+  if (!res.ok) {
+    let why = `HTTP ${res.status}`;
+    try { const err = await res.json(); why = err.hint || err.error || why; } catch { /* not JSON */ }
+    throw new Error(why);
+  }
+  offline = res.headers.get('X-Offline') === '1';
   data = await res.json();
+  showOffline();
+  // A Worker that has just started fills in recipes over a few calls.
+  if (data.incomplete && fillRetries++ < 8) setTimeout(refresh, 4000);
 }
+
+function showOffline() {
+  const note = document.getElementById('offline');
+  if (!note) return;
+  note.hidden = !offline;
+  note.textContent = offline ? `📴 ${t('offlineNote', { when: syncedAt() })}` : '';
+}
+addEventListener('online', () => refresh());
+
+// A photo that can't load (offline, or removed in Notion) turns back into the dish's emoji.
+document.addEventListener('error', (e) => {
+  const img = e.target;
+  if (img?.tagName !== 'IMG' || !img.closest('.photo')) return;
+  const box = img.closest('.photo');
+  box.classList.add('placeholder');
+  img.replaceWith(Object.assign(document.createElement('span'), { className: 'emoji', textContent: img.dataset.emoji || '🍽️' }));
+}, true);
 
 // Short links from WhatsApp buttons: ?m=2026-09-29-breakfast opens that meal.
 const shortLink = new URLSearchParams(location.search).get('m')?.match(/^(\d{4}-\d{2}-\d{2})-([a-z]+)$/);
@@ -981,7 +1013,7 @@ load().then(render).catch((err) => {
   app.innerHTML = `<div class="error"><h1>${t('couldntLoad')}</h1><p class="muted">${esc(err.message)}</p><button class="btn primary" onclick="location.reload()">${t('tryAgain')}</button></div>`;
 });
 
-if ('serviceWorker' in navigator && location.protocol === 'https:') {
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localhost|127\.0\.0\.1)$/.test(location.hostname))) {
   // When a deploy changes the code, the new worker takes over and the app reloads onto it.
   // The very first install also takes control, but that page is already up to date.
   let hadWorker = Boolean(navigator.serviceWorker.controller);

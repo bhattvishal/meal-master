@@ -765,3 +765,11 @@ a.grab-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
   .grab-card h3 { font-size: 18px; }
   .grab-card p { display: none; }
 }
+
+/* Offline: showing the last saved menu */
+.offline-note {
+  position: sticky; top: 0; z-index: 30; margin: 0 auto; width: fit-content; max-width: calc(100% - 32px);
+  padding: 6px 14px; border-radius: 0 0 14px 14px; font-size: 13px; font-weight: 700;
+  background: color-mix(in srgb, #e08a00 22%, var(--surface)); color: var(--ink); box-shadow: var(--shadow);
+}
+.offline-note[hidden] { display: none; }

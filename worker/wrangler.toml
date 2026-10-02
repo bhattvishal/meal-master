@@ -1,0 +1,40 @@
+# Meal Master API on Cloudflare Workers.
+# This repo is public: NO secrets here. Set them with `wrangler secret put <NAME>` or in the
+# dashboard (Worker → Settings → Variables and Secrets):
+#   NOTION_TOKEN   Notion integration secret
+#   APP_PIN        PIN the app sends in X-App-Pin for POST /meal
+#   WA_TOKEN       WhatsApp Cloud API access token (optional until WhatsApp is set up)
+#   WA_PHONE_ID    WhatsApp Cloud API phone number id (optional until WhatsApp is set up)
+# Also set WA_TO (recipient number(s), comma-separated, with country code) in the dashboard as a
+# plain variable rather than here, so the number is not published in the repo.
+
+name = "meal-master"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+# Keep variables added in the dashboard (like WA_TO) when deploying from here.
+keep_vars = true
+
+[triggers]
+# 15:30 UTC = 21:00 IST: send tomorrow's menu on WhatsApp.
+crons = ["30 15 * * *"]
+
+[vars]
+MEAL_DS = "f41b8852-00f8-4721-9ae8-1123c180b1f8"
+DISH_DS = "32e53ab6-113b-4da5-8586-56c23cc33500"
+COMBO_DS = "6a946f52-b613-4498-b2b1-512ed9f64b9e"
+PANTRY_DS = "e4d4bfef-f6e4-4d8c-9be7-413e5f9392bb"
+ALLOWED_ORIGIN = "https://bhattvishal.github.io"
+# Links the app shows ("Edit in Notion").
+SCHEDULE_URL = "https://www.notion.so/fdb3d2f43eee4a739ed7d8543a4bec9d"
+PANTRY_URL = "https://www.notion.so/648fbd35e45147349998edb1ba16199e"
+# WhatsApp template name and language, once the template is approved in WhatsApp Manager.
+WA_TEMPLATE = ""
+WA_LANG = "hi"
+
+# Recommended: a KV namespace that remembers parsed recipes and stock photo lookups between
+# requests, so Notion is called less. Create it with `npx wrangler kv namespace create MEAL_KV`
+# (or Dashboard → Storage & Databases → KV), then uncomment and paste the id (not a secret).
+# [[kv_namespaces]]
+# binding = "MEAL_KV"
+# id = "paste-the-namespace-id-here"

@@ -11,6 +11,7 @@ function loadImage(src) {
   return new Promise((resolve) => {
     if (!src) return resolve(null);
     const img = new Image();
+    img.crossOrigin = 'anonymous'; // photos come from the Worker, with CORS, so the canvas can be saved
     img.onload = () => resolve(img);
     img.onerror = () => resolve(null);
     img.src = src;
