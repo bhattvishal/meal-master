@@ -343,6 +343,55 @@ function dayPage(date) {
     <div class="meals">${SLOTS.map((slot, i) => card(slot, mealFor(date, slot), i)).join('')}</div>`;
 }
 
+// After a pick, updates the snack box in place (no re-render, so nothing flickers or reloads):
+// the ticks, the count, the dish's protein and calories, and "This meal".
+function updateSnackBox(mealId, pick) {
+  const full = pick.fillers.length >= BOX_MAX;
+  app.querySelectorAll('[data-filler]').forEach((box) => {
+    const on = pick.fillers.includes(box.dataset.filler);
+    box.checked = on;
+    box.disabled = !on && full;
+    box.closest('.pick').classList.toggle('on', on);
+    box.closest('.pick').classList.toggle('off', !on && full);
+  });
+  app.querySelectorAll('[data-grab]').forEach((r) => r.closest('.pick').classList.toggle('on', (pick.grab ?? '') === r.dataset.grab));
+  const count = app.querySelector('.snack-col .count');
+  if (count) count.textContent = t('boxCount', { n: pick.fillers.length, max: BOX_MAX });
+  const meal = data.meals.find((m) => m.id === mealId);
+  const dishes = dishesOf(meal);
+  const shown = dishes.find((d) => d.id === app.querySelector('[data-dishid]')?.dataset.dishid);
+  const facts = app.querySelector('[data-dish-facts]');
+  if (facts && shown) facts.innerHTML = dishFacts(shown);
+  const panel = app.querySelector('[data-meal-nutrition]');
+  if (panel) panel.innerHTML = mealNutrition(dishes);
+}
+
+// "This meal": calories as a donut split by macro, and the macro totals.
+function mealNutrition(dishes) {
+  const n = sum(dishes);
+  const split = MACROS.filter((m) => m.kcal).map((m) => ({ ...m, v: (n[m.key] ?? 0) * m.kcal }));
+  const kTotal = split.reduce((a, b) => a + b.v, 0) || 1;
+  const C = 2 * Math.PI * 40;
+  let off = 0;
+  const donut = split.map((m, i) => {
+    const len = (m.v / kTotal) * C;
+    const s = `<circle class="seg" cx="50" cy="50" r="40" style="--c:var(--${m.key});--len:${len};--i:${i};stroke-dashoffset:${-off}"/>`;
+    off += len;
+    return s;
+  }).join('');
+  return `
+    <h2>${t('thisMeal')}</h2>
+    <div class="donut-wrap">
+      <div class="donut"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" stroke="var(--surface-2)"/>${donut}</svg>
+        <div class="center"><b>${show(n.calories == null ? null : Math.round(n.calories))}</b><span>${kcal()}</span></div></div>
+      <div class="legend">${MACROS.map((m) => `<div><i style="--c:var(--${m.key})"></i>${t(m.key)}<b>${show(n[m.key], ` ${g()}`)}</b></div>`).join('')}</div>
+    </div>
+    <p class="muted" style="font-size:13px;margin:14px 0 0">${t('perPerson')}${dishes.some((d) => d.nutritionSource === 'Estimated') ? ` · ${t('someEstimates')}` : ''}</p>`;
+}
+
+// A dish's protein and calorie chips.
+const dishFacts = (dish) => `${dish.nutrition?.protein != null ? `<span class="chip">💪 ${dish.nutrition.protein} ${t('gProtein')}</span>` : ''}${dish.nutrition?.calories != null ? `<span class="chip">🔥 ${dish.nutrition.calories} ${kcal()}</span>` : ''}`;
+
 // The Office Snack Box: fillers on the left (up to five), one Grab and Go dish on the right.
 // Ticking anything updates the meal's nutrition straight away.
 function snackBoxBuilder(meal, slot) {
@@ -389,19 +438,6 @@ function mealPage(date, slot, selectedId, grabId = null) {
   }
   const main = dishes[0];
   const dish = dishes.find((d) => d.id === selectedId) ?? main;
-  const n = sum(dishes);
-
-  // Calorie split by macro for the donut.
-  const split = MACROS.filter((m) => m.kcal).map((m) => ({ ...m, v: (n[m.key] ?? 0) * m.kcal }));
-  const kTotal = split.reduce((a, b) => a + b.v, 0) || 1;
-  const C = 2 * Math.PI * 40;
-  let off = 0;
-  const donut = split.map((m, i) => {
-    const len = (m.v / kTotal) * C;
-    const s = `<circle class="seg" cx="50" cy="50" r="40" style="--c:var(--${m.key});--len:${len};--i:${i};stroke-dashoffset:${-off}"/>`;
-    off += len;
-    return s;
-  }).join('');
 
   const sections = dishText(dish, 'sections') ?? [];
   const intro = dishText(dish, 'intro');
@@ -449,8 +485,7 @@ function mealPage(date, slot, selectedId, grabId = null) {
               <div class="meta">
                 ${dish.prepTime ? `<span class="chip">⏱ ${dish.prepTime} ${t('min')}</span>` : ''}
                 ${dishText(dish, 'serving') ? `<span class="chip">🍽 ${esc(dishText(dish, 'serving'))}</span>` : ''}
-                ${dish.nutrition?.protein != null ? `<span class="chip">💪 ${dish.nutrition.protein} ${t('gProtein')}</span>` : ''}
-                ${dish.nutrition?.calories != null ? `<span class="chip">🔥 ${dish.nutrition.calories} ${kcal()}</span>` : ''}
+                <span class="dish-facts" data-dish-facts>${dishFacts(dish)}</span>
                 ${(dish.tags ?? []).map((x) => `<span class="chip">${esc(tag(x))}</span>`).join('')}
               </div>
               ${intro ? `<p class="muted" style="margin:12px 0 0">${esc(intro)}</p>` : ''}
@@ -458,15 +493,7 @@ function mealPage(date, slot, selectedId, grabId = null) {
           </div>
           <div class="scale-row">${peopleControl(people)}<span class="muted">${esc(peopleText(people))} · ${esc(scaleNote)}</span></div>
         </div>
-        <div class="panel rise" style="--i:1">
-          <h2>${t('thisMeal')}</h2>
-          <div class="donut-wrap">
-            <div class="donut"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" stroke="var(--surface-2)"/>${donut}</svg>
-              <div class="center"><b>${show(n.calories == null ? null : Math.round(n.calories))}</b><span>${kcal()}</span></div></div>
-            <div class="legend">${MACROS.map((m) => `<div><i style="--c:var(--${m.key})"></i>${t(m.key)}<b>${show(n[m.key], ` ${g()}`)}</b></div>`).join('')}</div>
-          </div>
-          <p class="muted" style="font-size:13px;margin:14px 0 0">${t('perPerson')}${dishes.some((d) => d.nutritionSource === 'Estimated') ? ` · ${t('someEstimates')}` : ''}</p>
-        </div>
+        <div class="panel rise" style="--i:1" data-meal-nutrition>${mealNutrition(dishes)}</div>
         ${meal.repeat || meal.draft || meal.combo ? `<div class="meta rise" style="--i:2">${meal.combo ? `<span class="chip small">🍱 ${esc(comboName(meal))}</span>` : ''}${badges(meal)}</div>` : ''}
         ${meal.notes ? `<div class="note rise" style="--i:2">📝 ${esc(meal.notes)}</div>` : ''}
         ${'wakeLock' in navigator ? `<div class="panel rise toggle" style="--i:3"><span>🍳 ${t('keepScreen')}</span><button class="switch" role="switch" aria-checked="${wakeLock ? 'true' : 'false'}" data-wake aria-label="${t('keepScreen')}"></button></div>` : ''}
@@ -1102,7 +1129,7 @@ app.addEventListener('change', (e) => {
       pick.fillers = e.target.checked ? [...new Set([...pick.fillers, id])].slice(0, BOX_MAX) : pick.fillers.filter((x) => x !== id);
     } else pick.grab = e.target.dataset.grab || null;
     saveBoxPick(mealId, pick);
-    rerender();
+    updateSnackBox(mealId, pick);
     return;
   }
   if (e.target.matches('[data-goal]')) {
