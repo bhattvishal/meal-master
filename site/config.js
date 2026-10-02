@@ -1,6 +1,6 @@
 // The address of the Meal Master Worker on Cloudflare, which reads the meal plan from Notion live.
 // After deploying the Worker (README → "Cloudflare Worker"), paste its URL here.
-const MEAL_API = 'https://meal-master.YOUR-SUBDOMAIN.workers.dev';
+const MEAL_API = 'https://meal-master.vishu24-12.workers.dev';
 
 // Loaded by the page and by the service worker. Local testing only: on a localhost page,
 // ?api=http://127.0.0.1:8787 points the app at `wrangler dev` (remembered until cleared).
