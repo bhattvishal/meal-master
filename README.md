@@ -43,7 +43,8 @@ The databases live under the **🥗 Meal Plan** page.
 | --- | --- | --- |
 | Name | Title | |
 | Type | Select | Main, Side, Snack or Drink |
-| Photo | Files | Your own photo, for example an AI-generated one. The app uses, in order: this column, the page cover, then the first image placed inside the dish page. Only when there's none of these does it find a free photo on Wikimedia Commons |
+| Photo | Files | Your own photo, for example an AI-generated one. The app uses, in order: this column, the page cover, the first image placed inside the dish page, then **Photo link**. Only when there's none of these does it find a free photo on Wikimedia Commons |
+| Photo link | URL | Optional. A link to a picture on the web, for when the stock photo is wrong. Paste the image address (right-click the picture → *Copy image address*), or a recipe page's link and the app uses that page's preview image. Clear it to go back to the stock photo |
 | Photo search | Text | Optional. Better search words for the stock photo |
 | Protein (g), Carbs (g), Fat (g), Fibre (g), Calories (kcal) | Number | Per serving |
 | Serving | Text | What one serving is, for example "2 rotis" |
@@ -170,13 +171,13 @@ Put the Worker's address in `site/config.js` (`MEAL_API`) and merge to `master`.
 | `GET /whatsapp/recipients` | Who the WhatsApp button sends to, and whether WhatsApp is set up. Needs `X-App-Pin` |
 | `POST /whatsapp/send` | Sends one meal: `{"date","meal","image"?}`, where `image` is the collage as a JPEG data URL. Needs `X-App-Pin` |
 | `GET /data` | Everything the app shows: meals from 14 days back to 60 ahead, their dishes and recipes, Grab and Go dishes, Snack Box Fillers, the pantry |
-| `GET /photo/:id` | A dish photo, fetched fresh from Notion (or Wikimedia) each time |
+| `GET /photo/:id` | A dish photo, fetched fresh from Notion, the Photo link or Wikimedia |
 
 Each meal says how it was resolved. A normal row for the date wins. Otherwise the most recent matching repeat applies: Daily, Weekdays (Mon–Fri), Weekends or Weekly (same weekday as its Date), from its Date until Until. A Combo supplies Main and Sides unless the row sets its own.
 
 GET answers are cached for about 60 seconds, and `POST /meal` clears the ones it affects. Errors are JSON with a hint, e.g. `{"error":"notion_404","hint":"Share the Meal Plan page with the integration: …"}`.
 
-**Tests:** `cd worker && npm install && npm test` runs the Worker in Cloudflare's local runtime against a fake Notion. It checks repeats and overrides, combos, photos (including images inside a page), Snack Box Fillers, the PIN, caching, CORS and sending a meal on WhatsApp.
+**Tests:** `cd worker && npm install && npm test` runs the Worker in Cloudflare's local runtime against a fake Notion. It checks repeats and overrides, combos, photos (including images inside a page and Photo links), Snack Box Fillers, the PIN, caching, CORS and sending a meal on WhatsApp.
 
 ## WhatsApp
 

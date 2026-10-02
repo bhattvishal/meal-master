@@ -1,7 +1,7 @@
 // Meal Master API: reads the meal plan from Notion live, writes meal changes back, and sends a
 // meal on WhatsApp when the app asks. See the Cloudflare Worker section of the repo README.
 
-import { ApiError, notion, queryAll, cleanId, isId, dashed, dishBase, ownPhotoUrl, recipeText } from './notion.js';
+import { ApiError, notion, queryAll, cleanId, isId, dashed, dishBase, ownPhotoUrl, linkPhotoUrl, recipeText } from './notion.js';
 import { appData, daysBetween, dishSummary, fillBodies, fillStock, loadCombos, loadScheduleRows, newBudget, bodyImageId } from './data.js';
 import { resolveMeals, istToday, addDays, SLOTS } from './schedule.js';
 import { getCached, putCached, purge, loadMap } from './store.js';
@@ -194,6 +194,7 @@ async function photo(id, request, env, ctx) {
       src = block.image?.file?.url ?? block.image?.external?.url ?? null;
     }
   }
+  if (!src) src = linkPhotoUrl(page);
   if (!src) {
     const stock = await loadMap(env, 'stock');
     src = stock[page.id]?.url ?? null;
@@ -202,9 +203,8 @@ async function photo(id, request, env, ctx) {
       src = filled[page.id]?.url ?? null;
     }
   }
-  if (!src) throw new ApiError(404, 'no_photo', 'This dish has no photo. Add one in the Photo column in Notion.');
-  const upstream = await fetch(src, { headers: { 'User-Agent': 'meal-master-worker/1.0' } });
-  if (!upstream.ok) throw new ApiError(502, `photo_${upstream.status}`, 'Could not fetch the photo.');
+  if (!src) throw new ApiError(404, 'no_photo', 'This dish has no photo. Add one in the Photo or Photo link column in Notion.');
+  const upstream = await fetchImage(src);
   const response = new Response(upstream.body, {
     headers: {
       'Content-Type': upstream.headers.get('Content-Type') || 'image/jpeg',
@@ -214,6 +214,38 @@ async function photo(id, request, env, ctx) {
   });
   ctx.waitUntil(caches.default?.put(key, response.clone()).catch(() => {}));
   return response;
+}
+
+const IMAGE_HEADERS = { 'User-Agent': 'meal-master-worker/1.0', Accept: 'image/*,text/html;q=0.8' };
+
+// Fetches an image. A web page (a Photo link to a recipe or stock photo page) is read for its
+// preview image (og:image or twitter:image), which is fetched instead.
+async function fetchImage(src) {
+  let res = await fetch(src, { headers: IMAGE_HEADERS });
+  if (!res.ok) throw new ApiError(502, `photo_${res.status}`, 'Could not fetch the photo.');
+  if (/text\/html/i.test(res.headers.get('Content-Type') || '')) {
+    const preview = previewImage((await res.text()).slice(0, 200_000), res.url || src);
+    if (!preview) throw new ApiError(502, 'photo_not_image', 'The Photo link is a web page without a preview image. Paste the image address instead (right-click the picture → Copy image address).');
+    res = await fetch(preview, { headers: IMAGE_HEADERS });
+    if (!res.ok) throw new ApiError(502, `photo_${res.status}`, 'Could not fetch the photo.');
+  }
+  if (/^(text|application\/json)/i.test(res.headers.get('Content-Type') || '')) throw new ApiError(502, 'photo_not_image', 'The photo link does not point to an image.');
+  return res;
+}
+
+// The og:image / twitter:image of a page, as an absolute URL.
+function previewImage(html, base) {
+  for (const tag of html.match(/<meta\b[^>]*>/gi) ?? []) {
+    const attr = (name) => tag.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i'))?.slice(1).find((v) => v != null);
+    if (!/^(og:image(:secure_url|:url)?|twitter:image(:src)?)$/i.test(attr('property') ?? attr('name') ?? '')) continue;
+    const content = attr('content')?.replace(/&amp;/g, '&').trim();
+    if (!content) continue;
+    try {
+      const url = new URL(content, base);
+      if (/^https?:$/.test(url.protocol)) return url.href;
+    } catch { /* not a URL */ }
+  }
+  return null;
 }
 
 // ---------- GET /dish/:id ----------

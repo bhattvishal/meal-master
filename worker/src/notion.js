@@ -97,6 +97,7 @@ export function prop(page, name) {
     case 'multi_select': return p.multi_select.map((o) => o.name);
     case 'date': return p.date?.start ?? null;
     case 'relation': return p.relation.map((r) => r.id);
+    case 'url': return p.url ?? null;
     case 'files': return p.files.map((f) => f.file?.url ?? f.external?.url).filter(Boolean);
     default: return null;
   }
@@ -138,6 +139,12 @@ export function comboEntry(page) {
 // Notion-hosted links are signed and expire after about an hour, so they are never stored.
 export function ownPhotoUrl(page) {
   return prop(page, 'Photo')?.[0] ?? page.cover?.file?.url ?? page.cover?.external?.url ?? null;
+}
+
+// The Photo link column: an image address, or a web page whose preview (og:image) to use.
+export function linkPhotoUrl(page) {
+  const link = prop(page, 'Photo link')?.trim();
+  return link && /^https?:\/\//i.test(link) ? link : null;
 }
 
 // Everything about a dish except its recipe body.

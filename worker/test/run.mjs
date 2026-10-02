@@ -256,6 +256,18 @@ try {
     assert.equal(res.status, 200, await res.clone().text());
     assert.equal(res.headers.get('content-type'), 'image/png');
   });
+  await check('The Photo link column is used when the page has no picture: an image, or a web page\'s og:image', async () => {
+    for (const [key, file] of [['juice', 'juice.png'], ['dal', 'recipes/dal-fry']]) {
+      const { body } = await get(`/dish/${D[key]}`);
+      assert.ok(body.photo?.src, `${key} has a photo`);
+      assert.ok(body.photo.url.endsWith(file), body.photo.url);
+      assert.equal(body.photo.credit, null);
+      const res = await fetch(body.photo.src, { headers: { Origin: ORIGIN } });
+      assert.equal(res.status, 200, await res.clone().text());
+      assert.equal(res.headers.get('content-type'), 'image/png');
+    }
+    assert.ok(mock.calls.some((c) => c.startsWith('GET /files/dal-photo.png')), 'fetched the og:image');
+  });
   await check('/whatsapp/preview shows each meal of a day in the template format', async () => {
     const { body } = await get(`/whatsapp/preview?date=${tomorrow}`);
     assert.equal(body.date, tomorrow);
