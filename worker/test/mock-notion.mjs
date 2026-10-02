@@ -41,6 +41,7 @@ export function createMock() {
       'Serving (Marathi)': { type: 'rich_text', rich_text: [] },
       'Prep time (min)': { type: 'number', number: extra.prep ?? 20 },
       Photo: { type: 'files', files: extra.photo ?? [] },
+      'Photo link': { type: 'url', url: extra.link ?? null },
       'Photo search': { type: 'rich_text', rich_text: [] },
       'Prep ahead': { type: 'rich_text', rich_text: [] },
       'Nutrition source': { type: 'select', select: { name: 'Estimated' } },
@@ -49,8 +50,8 @@ export function createMock() {
   addDish('wrap', 'Paneer or Chana Wrap', { hi: 'पनीर या चना रैप', tags: ['Office-friendly', 'Grab and Go'], prep: 10, photo: [{ type: 'file', name: 'wrap.png', file: { url: 'SIGNED:wrap.png' } }] });
   addDish('curd', 'Curd Cup with Chia', { hi: 'चिया वाला दही', type: 'Side', photo: [{ type: 'external', name: 'curd', external: { url: 'EXTERNAL:curd.png' } }] });
   addDish('poha', 'Poha', { hi: 'पोहा', mr: 'पोहे' });
-  addDish('juice', 'Mosambi Juice', { hi: 'मौसमी जूस', type: 'Side' });
-  addDish('dal', 'Dal Fry (Toor)', { hi: 'दाल फ्राई (तूर)', type: 'Side' });
+  addDish('juice', 'Mosambi Juice', { hi: 'मौसमी जूस', type: 'Side', link: 'LINK:/files/juice.png' });
+  addDish('dal', 'Dal Fry (Toor)', { hi: 'दाल फ्राई (तूर)', type: 'Side', link: 'LINK:/recipes/dal-fry' });
   addDish('rice', 'Plain Rice', { hi: 'सादा चावल', type: 'Side' });
   addDish('paneer', 'Paneer Bhurji', { hi: 'पनीर भुर्जी' });
   addDish('roti', 'Multigrain Roti', { hi: 'मल्टीग्रेन रोटी', type: 'Side' });
@@ -153,6 +154,8 @@ export function createMock() {
   // Signed Notion file links are made fresh on every read, like the real API.
   const fresh = (page) => {
     const copy = JSON.parse(JSON.stringify(page));
+    const link = copy.properties?.['Photo link'];
+    if (link?.url) link.url = link.url.replace('LINK:', `http://127.0.0.1:${port}`);
     for (const f of copy.properties?.Photo?.files ?? []) {
       if (f.file) f.file.url = signed(f.file.url.replace('SIGNED:', '').replace(/\?.*$/, '').split('/').pop());
       if (f.external) f.external.url = `http://127.0.0.1:${port}/files/${f.external.url.replace('EXTERNAL:', '').split('/').pop()}`;
@@ -178,6 +181,11 @@ export function createMock() {
       if (Number(url.searchParams.get('expires') ?? Infinity) < Date.now()) return send(403, { error: 'expired' });
       res.writeHead(200, { 'Content-Type': 'image/png' });
       return res.end(PNG);
+    }
+    if (url.pathname.startsWith('/recipes/')) {
+      // A recipe web page: the Worker should use its og:image (relative here).
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(`<!doctype html><html><head><meta name="description" content="Dal"><meta content='/files/dal-photo.png?a=1&amp;b=2' property='og:image'></head><body>Dal</body></html>`);
     }
     if (url.pathname.endsWith('/media')) {
       uploads.push({ auth: req.headers.authorization, type: req.headers['content-type'], size: body.length, hasJpeg: body.includes('image/jpeg') && body.includes('messaging_product') });

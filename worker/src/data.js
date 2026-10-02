@@ -1,6 +1,6 @@
 // Builds menus from Notion: schedule rows + combos + dishes, with recipes and photos.
 
-import { ApiError, Budget, queryAll, blocksOf, prop, scheduleRow, comboEntry, dishBase, ownPhotoUrl, isGrabAndGo, parseBody } from './notion.js';
+import { ApiError, Budget, queryAll, blocksOf, prop, scheduleRow, comboEntry, dishBase, ownPhotoUrl, linkPhotoUrl, isGrabAndGo, parseBody } from './notion.js';
 import { resolveMeals, istToday, addDays, SLOTS } from './schedule.js';
 import { loadMap, saveMap } from './store.js';
 
@@ -69,6 +69,9 @@ export function photoOf({ base, page }, stock, origin, bodies) {
   if (own) return { src: `${origin}/photo/${base.id}?v=${encodeURIComponent(base.edited)}`, url: own, credit: null };
   // An image placed inside the dish page (its link is fetched fresh by /photo).
   if (bodyImageId(base, bodies)) return { src: `${origin}/photo/${base.id}?v=${encodeURIComponent(base.edited)}`, url: null, credit: null };
+  // The Photo link column (fetched, and its page's preview image found, by /photo).
+  const link = linkPhotoUrl(page);
+  if (link) return { src: `${origin}/photo/${base.id}?v=${encodeURIComponent(base.edited)}`, url: link, credit: null };
   const s = stock?.[base.id];
   if (s?.url) {
     return {
@@ -111,7 +114,7 @@ export async function fillStock(env, entries, budget, bodies) {
   const stock = await loadMap(env, 'stock');
   if (env.STOCK_PHOTOS === '0') return { stock, incomplete: false };
   const wanted = entries.filter(({ base, page }) => {
-    if (ownPhotoUrl(page) || bodyImageId(base, bodies)) return false;
+    if (ownPhotoUrl(page) || bodyImageId(base, bodies) || linkPhotoUrl(page)) return false;
     const s = stock[base.id];
     const q = base.photoSearch || base.name;
     return !s || s.q !== q || (!s.url && Date.now() - (s.at ?? 0) > STOCK_RETRY_MS);
