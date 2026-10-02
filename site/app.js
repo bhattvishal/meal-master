@@ -60,9 +60,39 @@ function mealFor(date, slot) {
 }
 function dishesOf(meal) {
   if (!meal) return [];
-  const main = meal.main.map((id) => data.dishes[id]).filter(Boolean).map((d) => ({ ...d, role: 'main' }));
-  const sides = meal.sides.map((id) => data.dishes[id]).filter(Boolean).map((d) => ({ ...d, role: 'side' }));
+  // The Office Snack Box's nutrition is whatever was picked for this meal.
+  const withPicks = (d) => (isSnackBox(d) ? { ...d, nutrition: boxNutrition(boxPick(meal.id)), nutritionSource: 'Estimated' } : d);
+  const main = meal.main.map((id) => data.dishes[id]).filter(Boolean).map((d) => ({ ...withPicks(d), role: 'main' }));
+  const sides = meal.sides.map((id) => data.dishes[id]).filter(Boolean).map((d) => ({ ...withPicks(d), role: 'side' }));
   return [...main, ...sides];
+}
+
+// ---------- Office Snack Box ----------
+// A dish whose recipe has a "Box fillers" section is put together in the app: up to five fillers
+// from the Snack Box Fillers list in Notion, plus one Grab and Go dish. Picks are saved per meal.
+const BOX_MAX = 5;
+const isSnackBox = (d) => Boolean(data?.snackFillers?.length) && (d?.sections ?? []).some((s) => /box fillers/i.test(s.title));
+const fillerName = (f) => f.i18n?.[getLang()] || f.name;
+
+function boxPick(mealId) {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(`snackbox:${mealId}`) ?? 'null'); } catch { /* storage unavailable */ }
+  const known = new Set(data.snackFillers.map((f) => f.id));
+  const fillers = saved?.fillers ? saved.fillers.filter((id) => known.has(id)) : data.snackFillers.filter((f) => f.default).map((f) => f.id);
+  const grab = saved?.grab && data.dishes[saved.grab] ? saved.grab : null;
+  return { fillers: fillers.slice(0, BOX_MAX), grab };
+}
+function saveBoxPick(mealId, pick) {
+  try { localStorage.setItem(`snackbox:${mealId}`, JSON.stringify(pick)); } catch { /* storage unavailable */ }
+}
+function boxNutrition(pick) {
+  const items = [...pick.fillers.map((id) => data.snackFillers.find((f) => f.id === id)), pick.grab && data.dishes[pick.grab]].filter(Boolean);
+  const out = {};
+  for (const k of ['protein', 'carbs', 'fat', 'fibre', 'calories']) {
+    const vals = items.map((i) => i.nutrition?.[k]).filter((v) => typeof v === 'number');
+    out[k] = vals.length ? round(vals.reduce((a, b) => a + b, 0)) : null;
+  }
+  return out;
 }
 function mainDish(meal) {
   return dishesOf(meal)[0] ?? null;
@@ -166,9 +196,11 @@ function collage(dishes, slot) {
 }
 
 const shareIcon = `<svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>`;
-const shareBtn = (date, slot, cls = 'icon-btn') => `<button class="${cls} share-meal" data-share-meal="${date}/${slot}" aria-label="${esc(t('shareMeal'))}" title="${esc(t('shareMeal'))}">${shareIcon}</button>`;
-const linkIcon = `<svg viewBox="0 0 24 24"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg>`;
-const shareRecipeBtn = (date, slot) => `<button class="btn small share-meal share-recipe" data-share-meal="${date}/${slot}/link" aria-label="${esc(t('shareRecipe'))}">${linkIcon}<span>${esc(t('shareRecipe'))}</span></button>`;
+// Share always includes the recipe link; the WhatsApp button sends the meal through the Worker.
+const shareBtn = (date, slot, cls = 'icon-btn') => `<button class="${cls} share-meal" data-share-meal="${date}/${slot}" aria-label="${esc(t('shareRecipe'))}" title="${esc(t('shareRecipe'))}">${shareIcon}</button>`;
+const waIcon = `<svg class="wa-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.47 14.38c-.3-.15-1.75-.86-2.02-.96-.27-.1-.47-.15-.67.15-.2.3-.77.96-.94 1.16-.17.2-.35.22-.64.07-.3-.15-1.25-.46-2.38-1.47-.88-.79-1.47-1.76-1.65-2.06-.17-.3-.02-.46.13-.6.14-.14.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.67-1.6-.92-2.2-.24-.58-.49-.5-.67-.5h-.57c-.2 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.88 1.21 3.08c.15.2 2.1 3.2 5.08 4.48.71.31 1.26.49 1.7.63.71.22 1.36.19 1.87.12.57-.09 1.75-.72 2-1.41.25-.69.25-1.29.17-1.41-.07-.12-.27-.2-.57-.35M12.05 21.5h-.01a9.47 9.47 0 0 1-4.83-1.32l-.35-.21-3.59.94.96-3.5-.23-.36a9.45 9.45 0 0 1-1.45-5.04c0-5.23 4.26-9.49 9.5-9.49 2.54 0 4.92.99 6.71 2.79a9.43 9.43 0 0 1 2.78 6.71c0 5.24-4.26 9.49-9.49 9.49m8.08-17.57A11.35 11.35 0 0 0 12.05.58C5.75.58.63 5.7.62 11.99c0 2.01.53 3.97 1.52 5.7L.53 23.6l6.05-1.59a11.4 11.4 0 0 0 5.46 1.39h.01c6.29 0 11.41-5.12 11.42-11.41 0-3.05-1.19-5.92-3.34-8.07"/></svg>`;
+const waBtn = (date, slot, cls = 'icon-btn') => `<button class="${cls} wa-meal" data-wa-meal="${date}/${slot}" aria-label="${esc(t('waSend'))}" title="${esc(t('waSend'))}">${waIcon}</button>`;
+const recipeIcon = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5zM4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/><path d="M8 7h8M8 11h6"/></svg>`;
 const chevron = (dir) => `<svg viewBox="0 0 24 24"><path d="${dir === 'left' ? 'M15 5l-7 7 7 7' : 'M9 5l7 7-7 7'}"/></svg>`;
 
 const syncedAt = () => new Date(data.generatedAt).toLocaleString(locale(), { dateStyle: 'medium', timeStyle: 'short' });
@@ -274,7 +306,7 @@ function dayPage(date) {
       <div class="photo-frame">${collage(all, slot)}
         <span class="pill slot-pill"><span class="dot"></span>${slotName(slot)}</span>
         <span class="pill time-pill">🕒 ${mealTime(meal, slot)}</span>
-        ${shareBtn(date, slot, 'icon-btn small')}
+        <div class="card-actions">${shareBtn(date, slot, 'icon-btn small')}${waBtn(date, slot, 'icon-btn small')}</div>
       </div>
       <div class="body">
         <h3>${esc(name(dish))}</h3>
@@ -309,6 +341,42 @@ function dayPage(date) {
     </header>
     ${statTiles(sum(dishes), true)}
     <div class="meals">${SLOTS.map((slot, i) => card(slot, mealFor(date, slot), i)).join('')}</div>`;
+}
+
+// The Office Snack Box: fillers on the left (up to five), one Grab and Go dish on the right.
+// Ticking anything updates the meal's nutrition straight away.
+function snackBoxBuilder(meal, slot) {
+  const pick = boxPick(meal.id);
+  const full = pick.fillers.length >= BOX_MAX;
+  const facts = (n) => [n?.calories != null ? `${n.calories} ${kcal()}` : '', n?.protein != null ? `💪 ${n.protein} ${g()}` : ''].filter(Boolean).join(' · ');
+  const fillers = data.snackFillers.map((f) => {
+    const on = pick.fillers.includes(f.id);
+    return `<li><label class="pick${on ? ' on' : ''}${!on && full ? ' off' : ''}">
+      <input type="checkbox" data-filler="${f.id}" ${on ? 'checked' : ''} ${!on && full ? 'disabled' : ''}>
+      <span class="pick-emoji">${f.emoji || '🥜'}</span>
+      <span class="pick-text"><b>${esc(fillerName(f))}</b><small>${esc([f.portion, facts(f.nutrition)].filter(Boolean).join(' · '))}</small></span>
+    </label></li>`;
+  }).join('');
+  const grabs = (data.grabAndGo ?? []).map((id) => data.dishes[id]).filter(Boolean);
+  const radio = (id, label, sub, emoji, d) => `<li class="pick-row"><label class="pick${(pick.grab ?? '') === id ? ' on' : ''}">
+      <input type="radio" name="grab-${esc(meal.id)}" data-grab="${id}" ${(pick.grab ?? '') === id ? 'checked' : ''}>
+      ${d ? photo(d, slot) : `<span class="pick-emoji">${emoji}</span>`}
+      <span class="pick-text"><b>${esc(label)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span>
+    </label>${d ? `<a class="icon-btn small recipe-link" href="#/grab/${d.id}" aria-label="${esc(t('openRecipe'))}" title="${esc(t('openRecipe'))}">${recipeIcon}</a>` : ''}</li>`;
+  return `
+    <div class="snack-builder">
+      <section class="snack-col">
+        <h3>${esc(t('boxFillers'))} <span class="count">${esc(t('boxCount', { n: pick.fillers.length, max: BOX_MAX }))}</span></h3>
+        <ul class="pick-list">${fillers}</ul>
+      </section>
+      <section class="snack-col">
+        <h3>${esc(t('grabTitle'))} <span class="count">${esc(t('pickOne'))}</span></h3>
+        <ul class="pick-list">
+          ${radio('', t('noGrab'), '', '–')}
+          ${grabs.map((d) => radio(d.id, name(d), facts(d.nutrition), d.emoji, d)).join('')}
+        </ul>
+      </section>
+    </div>`;
 }
 
 // `grabId` shows one Grab and Go dish on its own, with the same recipe view as a planned meal.
@@ -364,7 +432,7 @@ function mealPage(date, slot, selectedId, grabId = null) {
           : `<span class="pill meal-${slot}"><span class="dot"></span>${slotName(slot)} · ${mealTime(meal, slot)}</span> ${esc(relDay(date))} · ${fmt(date, { day: 'numeric', month: 'long' })}`}</div>
         <h1>${esc(name(main))}${dishes.length > 1 ? ` <span class="sub">${t('with')} ${dishes.slice(1).map((d) => esc(name(d))).join(' & ')}</span>` : ''}</h1>
       </div>
-      ${grabId ? '' : `<div class="share-group">${shareBtn(date, slot)}${shareRecipeBtn(date, slot)}</div>`}
+      ${grabId ? '' : `<div class="share-group">${shareBtn(date, slot)}${waBtn(date, slot)}</div>`}
       ${dishes.length > 1 ? `<div class="dish-tabs" role="tablist">${dishes.map((d) => `
         <button class="dish-tab" role="tab" aria-selected="${d.id === dish.id}" data-dish="${d.id}">
           ${photo(d, slot)}<span><small>${t(d.role === 'main' ? 'main' : 'side')}</small>${esc(name(d))}</span>
@@ -407,7 +475,7 @@ function mealPage(date, slot, selectedId, grabId = null) {
       <div style="display:grid;gap:18px;min-width:0">
 
         <article class="panel dish rise" style="--i:2" data-meal="${meal.id}" data-dishid="${dish.id}">
-          ${sections.length ? `<div class="recipe ${lists.length && steps.length ? 'two' : ''}">${listHtml ? `<div class="recipe-col">${listHtml}</div>` : ''}${stepHtml ? `<div class="recipe-col">${stepHtml}</div>` : ''}</div>` : `<p class="muted">${t('noRecipe')}</p>`}
+          ${isSnackBox(dish) ? snackBoxBuilder(meal, slot) : sections.length ? `<div class="recipe ${lists.length && steps.length ? 'two' : ''}">${listHtml ? `<div class="recipe-col">${listHtml}</div>` : ''}${stepHtml ? `<div class="recipe-col">${stepHtml}</div>` : ''}</div>` : `<p class="muted">${t('noRecipe')}</p>`}
           ${dish.notionUrl ? `<p style="margin:0"><a class="muted" style="text-decoration:underline" href="${esc(dish.notionUrl)}" target="_blank" rel="noopener">${t('openNotion')}</a></p>` : ''}
         </article>
       </div>
@@ -688,17 +756,31 @@ function mealShareText(date, slot, withLink = false) {
   return { text: lines.join('\n') };
 }
 
-// One picture of every dish in the meal, with the heading, for the share sheet.
+// "Today's Lunch" in English, for the WhatsApp message (its template is in English).
+function englishHeading(date, slot) {
+  const diff = Math.round((parse(date) - parse(today())) / 86400000);
+  const meal = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack' }[slot] ?? slot;
+  if (diff < 0 || diff > 6) return `${meal} · ${parse(date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}`;
+  const day = diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : parse(date).toLocaleDateString('en-GB', { weekday: 'long' });
+  return `${day}'s ${meal}`;
+}
+
+// One picture of every dish in the meal, with a heading (at most four dishes are pictured).
+function collageBlob(date, slot, { english = false } = {}) {
+  const css = getComputedStyle(document.documentElement);
+  return mealCollage({
+    heading: `${SLOT_EMOJI[slot] ?? '🍽️'} ${english ? englishHeading(date, slot) : shareHeading(date, slot)}`,
+    dishes: dishesOf(mealFor(date, slot)).map((d) => ({ name: english ? d.name : name(d), src: d.photo?.src, emoji: d.emoji })),
+    color: css.getPropertyValue(`--${slot}`).trim() || '#3f9b5a',
+    family: css.getPropertyValue('--sans').trim() || 'sans-serif',
+  });
+}
+
+// For the share sheet.
 async function mealCollageFile(date, slot) {
   if (!navigator.canShare) return null;
   try {
-    const css = getComputedStyle(document.documentElement);
-    const blob = await mealCollage({
-      heading: `${SLOT_EMOJI[slot] ?? '🍽️'} ${shareHeading(date, slot)}`,
-      dishes: dishesOf(mealFor(date, slot)).map((d) => ({ name: name(d), src: d.photo?.src, emoji: d.emoji })),
-      color: css.getPropertyValue(`--${slot}`).trim() || '#3f9b5a',
-      family: css.getPropertyValue('--sans').trim() || 'sans-serif',
-    });
+    const blob = await collageBlob(date, slot);
     const file = blob && new File([blob], `${date}-${slot}.jpg`, { type: 'image/jpeg' });
     return file && navigator.canShare({ files: [file] }) ? file : null;
   } catch {
@@ -719,6 +801,108 @@ async function shareMeal(date, slot, withLink) {
     }
   }
   location.href = `https://wa.me/?text=${encodeURIComponent(text)}`;
+}
+
+// ---------- WhatsApp through the Worker ----------
+
+const getPin = () => { try { return localStorage.getItem('appPin') || ''; } catch { return ''; } };
+const setPin = (pin) => { try { if (pin) localStorage.setItem('appPin', pin); else localStorage.removeItem('appPin'); } catch { /* storage unavailable */ } };
+
+// A small modal: resolves true (OK), the typed text (with `input`), or null (cancelled).
+function dialog({ title, message = '', input = false, ok = t('ok'), cancel = t('cancel') }) {
+  return new Promise((resolve) => {
+    const box = document.createElement('dialog');
+    box.className = 'app-dialog';
+    box.innerHTML = `<form method="dialog">
+      <h2>${esc(title)}</h2>${message ? `<p>${esc(message)}</p>` : ''}
+      ${input ? '<input type="password" inputmode="numeric" autocomplete="off" required>' : ''}
+      <div class="actions">${cancel ? `<button class="btn" type="button" data-cancel>${esc(cancel)}</button>` : ''}<button class="btn primary">${esc(ok)}</button></div>
+    </form>`;
+    document.body.append(box);
+    const done = (value) => { box.close(); box.remove(); resolve(value); };
+    box.querySelector('[data-cancel]')?.addEventListener('click', () => done(null));
+    box.addEventListener('cancel', (e) => { e.preventDefault(); done(null); });
+    box.querySelector('form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      done(input ? box.querySelector('input').value.trim() || null : true);
+    });
+    box.showModal();
+    box.querySelector('input')?.focus();
+  });
+}
+
+function toast(message, kind = '') {
+  document.querySelector('.toast')?.remove();
+  const el = Object.assign(document.createElement('div'), { className: `toast ${kind}`, textContent: message, role: 'status' });
+  document.body.append(el);
+  if (kind) setTimeout(() => el.remove(), 5000);
+  return el;
+}
+
+async function api(path, { method = 'GET', body, pin } = {}) {
+  try {
+    const res = await fetch(`${API}${path}`, {
+      method,
+      cache: 'no-store',
+      headers: { ...(body && { 'Content-Type': 'application/json' }), ...(pin && { 'X-App-Pin': pin }) },
+      body: body && JSON.stringify(body),
+    });
+    return { status: res.status, ok: res.ok, out: await res.json().catch(() => ({})) };
+  } catch {
+    return { status: 0, ok: false, out: { hint: t('waOffline') } };
+  }
+}
+
+// Runs a call that needs the app PIN: asks for it once (then it's saved on this device), and
+// again if the Worker says it's wrong.
+async function withPin(call) {
+  let wrong = false;
+  for (let tries = 0; tries < 3; tries++) {
+    let pin = getPin();
+    if (!pin) {
+      pin = await dialog({ title: t('pinTitle'), message: wrong ? t('pinWrong') : t('pinHelp'), input: true, ok: t('continue') });
+      if (!pin) return null;
+    }
+    const result = await call(pin);
+    if (result.status !== 401) {
+      setPin(pin);
+      return result;
+    }
+    setPin('');
+    wrong = true;
+  }
+  return null;
+}
+
+const blobToDataUrl = (blob) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result);
+  reader.onerror = reject;
+  reader.readAsDataURL(blob);
+});
+
+let waBusy = false;
+async function sendOnWhatsApp(date, slot) {
+  if (waBusy) return;
+  waBusy = true;
+  try {
+    const who = await withPin((pin) => api('/whatsapp/recipients', { pin }));
+    if (!who) return;
+    if (!who.ok) return void toast(t('waFailed', { why: who.out.hint || who.out.error || who.status }), 'error');
+    if (!who.out.ready) {
+      return void await dialog({ title: t('waTitle'), message: t('waNotSetUp', { missing: who.out.missing.join(', ') }), cancel: null });
+    }
+    const yes = await dialog({ title: t('waTitle'), message: t('waConfirm', { to: who.out.to.join(', ') }), ok: t('waShare') });
+    if (!yes) return;
+    toast(t('waSending'));
+    let image = null;
+    try { image = await blobToDataUrl(await collageBlob(date, slot, { english: true })); } catch { /* send with the default header */ }
+    const sent = await api('/whatsapp/send', { method: 'POST', pin: getPin(), body: { date, meal: slot, image } });
+    if (sent.ok) toast(t('waSent', { to: sent.out.sent.join(', ') }), 'ok');
+    else toast(t('waFailed', { why: sent.out.hint || sent.out.error || sent.status }), 'error');
+  } finally {
+    waBusy = false;
+  }
 }
 
 function shopText() {
@@ -865,8 +1049,16 @@ app.addEventListener('click', async (e) => {
   if (shareMealBtn) {
     e.preventDefault();
     e.stopPropagation();
-    const [d, slot, link] = shareMealBtn.dataset.shareMeal.split('/');
-    shareMeal(d, slot, link === 'link');
+    const [d, slot] = shareMealBtn.dataset.shareMeal.split('/');
+    shareMeal(d, slot, true);
+    return;
+  }
+  const waMealBtn = e.target.closest('[data-wa-meal]');
+  if (waMealBtn) {
+    e.preventDefault();
+    e.stopPropagation();
+    const [d, slot] = waMealBtn.dataset.waMeal.split('/');
+    sendOnWhatsApp(d, slot);
     return;
   }
   if (e.target.closest('[data-share]')) {
@@ -902,6 +1094,17 @@ app.addEventListener('click', async (e) => {
 });
 
 app.addEventListener('change', (e) => {
+  if (e.target.matches('[data-filler], [data-grab]')) {
+    const mealId = e.target.closest('[data-meal]').dataset.meal;
+    const pick = boxPick(mealId);
+    if (e.target.matches('[data-filler]')) {
+      const id = e.target.dataset.filler;
+      pick.fillers = e.target.checked ? [...new Set([...pick.fillers, id])].slice(0, BOX_MAX) : pick.fillers.filter((x) => x !== id);
+    } else pick.grab = e.target.dataset.grab || null;
+    saveBoxPick(mealId, pick);
+    rerender();
+    return;
+  }
   if (e.target.matches('[data-goal]')) {
     setGoal(e.target.dataset.goal, Number(e.target.value));
     e.target.value = getGoals()[e.target.dataset.goal];

@@ -7,11 +7,12 @@ const MEAL_DS = 'f41b8852-00f8-4721-9ae8-1123c180b1f8';
 const DISH_DS = '32e53ab6-113b-4da5-8586-56c23cc33500';
 const COMBO_DS = '6a946f52-b613-4498-b2b1-512ed9f64b9e';
 const PANTRY_DS = 'e4d4bfef-f6e4-4d8c-9be7-413e5f9392bb';
-export const IDS = { MEAL_DS, DISH_DS, COMBO_DS, PANTRY_DS };
+const FILLER_DS = '11f5db09-7d44-4d98-adcf-416dce981bee';
+export const IDS = { MEAL_DS, DISH_DS, COMBO_DS, PANTRY_DS, FILLER_DS };
 
 const rt = (s) => (s ? [{ type: 'text', plain_text: String(s), text: { content: String(s) } }] : []);
 const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-export const D = { wrap: id(1), curd: id(2), poha: id(3), juice: id(4), dal: id(5), rice: id(6), paneer: id(7), roti: id(8), salad: id(9) };
+export const D = { wrap: id(1), curd: id(2), poha: id(3), juice: id(4), dal: id(5), rice: id(6), paneer: id(7), roti: id(8), salad: id(9), snackbox: id(10) };
 const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000' + '1f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082', 'hex');
 
 export function createMock() {
@@ -64,7 +65,25 @@ export function createMock() {
     { type: 'heading_1', heading_1: { rich_text: rt('हिन्दी') } },
     { type: 'heading_2', heading_2: { rich_text: rt('सामग्री') } },
     { type: 'bulleted_list_item', bulleted_list_item: { rich_text: rt('2 मल्टीग्रेन रोटी') } },
+  ]], [D.paneer, [
+    { type: 'image', image: { type: 'file', file: { url: 'SIGNED:paneer.png' } } },
+    { type: 'heading_2', heading_2: { rich_text: rt('Ingredients') } },
+    { type: 'bulleted_list_item', bulleted_list_item: { rich_text: rt('200 g paneer') } },
   ]]]);
+
+  const fillers = [
+    ['Roasted chana', '30 g', 110, 6, true, false],
+    ['Peanuts', '30 g', 170, 7, true, false],
+    ['Walnuts', '15 g', 98, 2.3, false, false],
+    ['Old filler', '10 g', 50, 1, false, true],
+  ].map(([name, portion, kcal, protein, def, hide], i) => ({
+    object: 'page', id: id(400 + i), icon: { type: 'emoji', emoji: '🥜' }, properties: {
+      Name: { type: 'title', title: rt(name) }, 'Name (Hindi)': { type: 'rich_text', rich_text: rt(`${name} (hi)`) }, 'Name (Marathi)': { type: 'rich_text', rich_text: [] },
+      Portion: { type: 'rich_text', rich_text: rt(portion) }, 'Calories (kcal)': { type: 'number', number: kcal }, 'Protein (g)': { type: 'number', number: protein },
+      'Carbs (g)': { type: 'number', number: 5 }, 'Fat (g)': { type: 'number', number: 5 }, 'Fibre (g)': { type: 'number', number: 2 },
+      Default: { type: 'checkbox', checkbox: def }, Hide: { type: 'checkbox', checkbox: hide },
+    },
+  }));
 
   const combos = [{
     object: 'page', id: id(100), properties: {
@@ -106,6 +125,7 @@ export function createMock() {
 
   const calls = [];
   const sent = [];
+  const uploads = [];
 
   // Evaluates the subset of Notion filters the Worker uses.
   const value = (page, name) => {
@@ -139,6 +159,11 @@ export function createMock() {
     }
     return copy;
   };
+  const freshBlock = (b) => {
+    const copy = JSON.parse(JSON.stringify(b));
+    if (copy.image?.file) copy.image.file.url = signed(copy.image.file.url.replace('SIGNED:', ''));
+    return copy;
+  };
   const allPages = () => [...dishes.values(), ...rows, ...combos, ...pantry];
   const findPage = (pid) => allPages().find((p) => p.id.replace(/-/g, '') === pid.replace(/-/g, ''));
 
@@ -154,6 +179,10 @@ export function createMock() {
       res.writeHead(200, { 'Content-Type': 'image/png' });
       return res.end(PNG);
     }
+    if (url.pathname.endsWith('/media')) {
+      uploads.push({ auth: req.headers.authorization, type: req.headers['content-type'], size: body.length, hasJpeg: body.includes('image/jpeg') && body.includes('messaging_product') });
+      return send(200, { id: 'media-123' });
+    }
     if (url.pathname.includes('/messages')) {
       sent.push({ auth: req.headers.authorization, body: JSON.parse(body) });
       return send(200, { messages: [{ id: 'wamid.test' }] });
@@ -164,14 +193,19 @@ export function createMock() {
     let m;
     if (req.method === 'POST' && (m = url.pathname.match(/^\/v1\/data_sources\/([^/]+)\/query$/))) {
       const q = JSON.parse(body || '{}');
-      const source = { [MEAL_DS]: rows, [DISH_DS]: [...dishes.values()], [COMBO_DS]: combos, [PANTRY_DS]: pantry }[m[1]];
+      const source = { [MEAL_DS]: rows, [DISH_DS]: [...dishes.values()], [COMBO_DS]: combos, [PANTRY_DS]: pantry, [FILLER_DS]: fillers }[m[1]];
       if (!source) return send(404, { object: 'error', code: 'object_not_found', message: `Could not find data_source with ID: ${m[1]}.` });
       const results = source.filter((p) => matches(p, q.filter)).map(fresh);
       return send(200, { object: 'list', results, has_more: false, next_cursor: null });
     }
     if (req.method === 'GET' && (m = url.pathname.match(/^\/v1\/blocks\/([^/]+)\/children$/))) {
       const list = blocks.get(findPage(m[1])?.id) ?? [];
-      return send(200, { object: 'list', results: list.map((b, i) => ({ object: 'block', id: `${m[1]}-${i}`, ...b })), has_more: false });
+      return send(200, { object: 'list', results: list.map((b, i) => freshBlock({ object: 'block', id: `${m[1]}-${i}`, ...b })), has_more: false });
+    }
+    if (req.method === 'GET' && (m = url.pathname.match(/^\/v1\/blocks\/([^/]+)-(\d+)$/))) {
+      const b = (blocks.get(findPage(m[1])?.id) ?? [])[Number(m[2])];
+      if (!b) return send(404, { object: 'error', code: 'object_not_found', message: 'Could not find block.' });
+      return send(200, freshBlock({ object: 'block', id: `${m[1]}-${m[2]}`, ...b }));
     }
     if ((m = url.pathname.match(/^\/v1\/pages\/([^/]+)$/))) {
       const page = findPage(m[1]);
@@ -207,7 +241,7 @@ export function createMock() {
   }
 
   return {
-    rows, dishes, calls, sent, addRow, D, COMBO: id(100),
+    rows, dishes, blocks, calls, sent, uploads, addRow, addDish, D, COMBO: id(100),
     touchDish(key, name) {
       const page = dishes.get(D[key]);
       page.properties.Name.title = rt(name);

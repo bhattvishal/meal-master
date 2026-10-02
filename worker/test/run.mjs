@@ -241,22 +241,40 @@ try {
     const { body } = await get(`/day?date=${weekdayB}`);
     assert.deepEqual(names(body.meals.lunch), ['Poha', 'Multigrain Roti']);
   });
-  await check('/whatsapp/preview shows tomorrow in Hindi', async () => {
-    const { body } = await get('/whatsapp/preview');
-    assert.equal(body.date, tomorrow);
-    assert.equal(body.params.length, 4);
-    assert.equal(body.params[1], 'पोहा, मौसमी जूस');
-    assert.equal(body.params[3], 'दाल फ्राई (तूर), सादा चावल, मल्टीग्रेन रोटी');
-    // Tomorrow's lunch: the weekday repeat, unless the POST test above changed that day.
-    const lunch = tomorrow === weekdayA ? 'पनीर या चना रैप, हरा सलाद' : isWeekday(tomorrow) ? 'पनीर या चना रैप, चिया वाला दही' : '—';
-    assert.equal(body.params[2], lunch);
-    assert.equal(body.ready, false);
+  await check('Snack Box Fillers come with /data (hidden ones left out, defaults first)', async () => {
+    const { body } = await get('/data');
+    assert.deepEqual(body.snackFillers.map((f) => f.name), ['Peanuts', 'Roasted chana', 'Walnuts']);
+    assert.equal(body.snackFillers[0].default, true);
+    assert.equal(body.snackFillers[2].default, false);
+    assert.equal(body.snackFillers[1].nutrition.calories, 110);
+    assert.equal(body.snackFillers[1].portion, '30 g');
   });
-  await check('Cron without WA_TOKEN logs and skips', async () => {
-    const res = await fetch(`${W}/__scheduled?cron=30+15+*+*+*`);
-    assert.equal(res.status, 200);
-    await sleep(1000);
-    assert.match(main.log(), /WA_TOKEN or WA_PHONE_ID is not set; skipping/);
+  await check('A dish with an image inside its Notion page uses it as the photo', async () => {
+    const { body: paneer } = await get(`/dish/${D.paneer}`);
+    assert.ok(paneer.photo?.src, 'has a photo');
+    const res = await fetch(paneer.photo.src, { headers: { Origin: ORIGIN } });
+    assert.equal(res.status, 200, await res.clone().text());
+    assert.equal(res.headers.get('content-type'), 'image/png');
+  });
+  await check('/whatsapp/preview shows each meal of a day in the template format', async () => {
+    const { body } = await get(`/whatsapp/preview?date=${tomorrow}`);
+    assert.equal(body.date, tomorrow);
+    assert.equal(body.ready, false);
+    const breakfast = body.messages.find((m) => m.meal === 'breakfast');
+    assert.deepEqual(breakfast.params, ['Breakfast', '🍽️ Poha', '🍽️ Mosambi Juice', '—']);
+    assert.equal(breakfast.text, "Today's Meal\nBreakfast\n\nMain: 🍽️ Poha\nSides: 🍽️ Mosambi Juice\nInstructions: —");
+    const dinner = body.messages.find((m) => m.meal === 'dinner');
+    assert.deepEqual(dinner.params.slice(1, 3), ['🍽️ Dal Fry (Toor)', '🍽️ Plain Rice • 🍽️ Multigrain Roti']);
+  });
+  await check('WhatsApp recipients and sending need the PIN, and say when WhatsApp isn\'t set up', async () => {
+    assert.equal((await get('/whatsapp/recipients')).res.status, 401);
+    const { body } = await get('/whatsapp/recipients', { 'X-App-Pin': '2468' });
+    assert.deepEqual(body.to, []);
+    assert.equal(body.ready, false);
+    assert.ok(body.missing.includes('WA_TOKEN'));
+    const res = await fetch(`${W}/whatsapp/send`, { method: 'POST', headers: { Origin: ORIGIN, 'Content-Type': 'application/json', 'X-App-Pin': '2468' }, body: JSON.stringify({ date: tomorrow, meal: 'breakfast' }) });
+    assert.equal(res.status, 503);
+    assert.equal((await res.json()).error, 'whatsapp_not_configured');
   });
 } finally {
   main.child.kill();
@@ -266,25 +284,58 @@ try {
 const PORT2 = 8791;
 const W2 = `http://127.0.0.1:${PORT2}`;
 const wa = startWorker(PORT2, {
-  ...baseVars, WA_TOKEN: 'wa-token', WA_PHONE_ID: '123456', WA_TO: '+91 98765 43210', WA_TEMPLATE: 'tomorrow_menu', WA_LANG: 'hi',
+  ...baseVars, WA_TOKEN: 'wa-token', WA_PHONE_ID: '123456', WA_TO: '+91 98765 43210', WA_TEMPLATE: 'todays_meal', WA_LANG: 'en',
   WA_API_BASE: `http://127.0.0.1:${notionPort}`,
 });
 try {
   await waitUp(W2);
-  await check('Cron sends tomorrow\'s menu with the template, matching the preview', async () => {
-    const preview = await (await fetch(`${W2}/whatsapp/preview`)).json();
-    assert.equal(preview.ready, true);
-    assert.deepEqual(preview.recipients, ['••••••••3210']);
-    const res = await fetch(`${W2}/__scheduled?cron=30+15+*+*+*`);
-    assert.equal(res.status, 200);
-    await sleep(1500);
-    assert.equal(mock.sent.length, 1, wa.log());
-    const msg = mock.sent[0];
-    assert.equal(msg.auth, 'Bearer wa-token');
-    assert.equal(msg.body.to, '919876543210');
-    assert.equal(msg.body.template.name, 'tomorrow_menu');
-    assert.equal(msg.body.template.language.code, 'hi');
-    assert.deepEqual(msg.body.template.components[0].parameters.map((p) => p.text), preview.params);
+  const send = (body, pin = '2468') => fetch(`${W2}/whatsapp/send`, {
+    method: 'POST', headers: { Origin: ORIGIN, 'Content-Type': 'application/json', ...(pin && { 'X-App-Pin': pin }) }, body: JSON.stringify(body),
+  });
+  const JPEG = `data:image/jpeg;base64,${Buffer.from('fake-jpeg-bytes').toString('base64')}`;
+  await check('The app can see who the WhatsApp button sends to (with the PIN)', async () => {
+    const out = await (await fetch(`${W2}/whatsapp/recipients`, { headers: { 'X-App-Pin': '2468' } })).json();
+    assert.deepEqual(out.to, ['+91 98765 43210']);
+    assert.equal(out.ready, true);
+  });
+  await check('Sending a meal without the PIN is 401 and sends nothing', async () => {
+    const res = await send({ date: tomorrow, meal: 'breakfast', image: JPEG }, null);
+    assert.equal(res.status, 401);
+    assert.equal(mock.sent.length, 0);
+    assert.equal(mock.uploads.length, 0);
+  });
+  await check('Sending a meal uploads the collage and fills the template header, body and button', async () => {
+    const res = await send({ date: tomorrow, meal: 'breakfast', image: JPEG });
+    const out = await res.json();
+    assert.equal(res.status, 200, JSON.stringify(out));
+    assert.deepEqual(out.sent, ['+91 98765 43210']);
+    assert.equal(mock.uploads.length, 1);
+    assert.equal(mock.uploads[0].auth, 'Bearer wa-token');
+    assert.match(mock.uploads[0].type, /multipart\/form-data/);
+    assert.ok(mock.uploads[0].hasJpeg);
+    const msg = mock.sent.at(-1).body;
+    assert.equal(msg.to, '919876543210');
+    assert.equal(msg.template.name, 'todays_meal');
+    assert.equal(msg.template.language.code, 'en');
+    const [header, body, button] = msg.template.components;
+    assert.deepEqual(header, { type: 'header', parameters: [{ type: 'image', image: { id: 'media-123' } }] });
+    assert.deepEqual(body.parameters.map((p) => p.text), ['Breakfast', '🍽️ Poha', '🍽️ Mosambi Juice', '—']);
+    assert.deepEqual(button, { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: `${tomorrow}-breakfast` }] });
+  });
+  await check('Without a collage the header uses the Meal Master card; notes become Instructions', async () => {
+    const before = mock.uploads.length;
+    const res = await send({ date: weekdayB, meal: 'lunch' });
+    assert.equal(res.status, 200, await res.clone().text());
+    assert.equal(mock.uploads.length, before);
+    const msg = mock.sent.at(-1).body;
+    assert.equal(msg.template.components[0].parameters[0].image.link, 'https://bhattvishal.github.io/meal-master/icons/meal-card.png');
+  });
+  await check('Sending a meal that isn\'t planned, or a bad image, is a clear error', async () => {
+    const none = await send({ date: weekend, meal: 'lunch' });
+    assert.equal(none.status, 404);
+    assert.equal((await none.json()).error, 'no_meal');
+    const bad = await send({ date: tomorrow, meal: 'breakfast', image: 'data:image/png;base64,AAAA' });
+    assert.equal(bad.status, 400);
   });
 } finally {
   wa.child.kill();

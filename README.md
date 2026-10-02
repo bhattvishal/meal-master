@@ -9,8 +9,8 @@ The app opens on **Today**. Home is one tap away in the tab bar.
 | Page | Address | What it shows |
 | --- | --- | --- |
 | Home | `#/home` | An animated plate for today, with the protein total, what's next, and today's three meals |
-| Today / Day | `#/day` or `#/day/2026-09-29` | Breakfast, lunch and dinner cards with a collage of the main dish and its sides, the nutrients, plus day totals. Each card has a share button. Swipe or use the arrow keys to change day |
-| Meal | `#/meal/2026-09-29/dinner` | A header with tabs for the main dish and each side, the dish photo and details beside the recipe, the nutrition breakdown, ingredients you can tick off, and numbered steps. It can keep the screen on while you cook. The share button sends the meal on WhatsApp: one collage picture of all the dishes, the dish names and the meal's note, nothing else. **Share with recipe** adds a link that opens the meal in the app |
+| Today / Day | `#/day` or `#/day/2026-09-29` | Breakfast, lunch and dinner cards with a collage of the main dish and its sides, the nutrients, plus day totals. Each card has a share button and a WhatsApp button. Swipe or use the arrow keys to change day |
+| Meal | `#/meal/2026-09-29/dinner` | A header with tabs for the main dish and each side, the dish photo and details beside the recipe, the nutrition breakdown, ingredients you can tick off, and numbered steps. It can keep the screen on while you cook. The share button opens the phone's share sheet with a collage of the dishes, their names, the meal's note and a link to the recipe. The green WhatsApp button sends the meal to the cook through the Worker, after asking you to confirm. For the **Office Snack Box**, the page lets you pick up to 5 box fillers and one Grab and Go dish side by side, and the nutrition updates as you pick |
 | Week | `#/week` | Monday to Sunday with every meal, and the week's protein and calorie totals |
 | Grab and Go | `#/grab` | Quick office lunches: dishes ready in 10 minutes or less that pack well, planned or not. Tap one for its recipe. A 🔔 chip marks dishes that need soaking or sprouting ahead |
 | Prep | `#/prep` or `#/prep/4` | What to soak, sprout or ferment ahead for the next 2, 4 or 7 days, grouped by when to do it (tonight, tomorrow morning…), with tick boxes. The Today page shows a 🔔 chip when something is due within a day |
@@ -31,7 +31,7 @@ GitHub Pages (site/) ──► the installed app on your tablet (works offline w
 
 The browser never talks to Notion directly: Notion doesn't allow that, and it would expose the key. The **Worker** holds the Notion key as a Cloudflare secret, reads the meal plan when the app asks, and answers within about a minute of any change in Notion. No deploy or sync is needed. Photos go through the Worker too, because Notion's photo links expire after an hour.
 
-Every evening at 9 pm India time the Worker also sends tomorrow's menu on WhatsApp.
+The Worker also sends a meal on WhatsApp when you tap the WhatsApp button in the app.
 
 ## Notion setup
 
@@ -43,13 +43,13 @@ The databases live under the **🥗 Meal Plan** page.
 | --- | --- | --- |
 | Name | Title | |
 | Type | Select | Main, Side, Snack or Drink |
-| Photo | Files | Your own photo. If it's empty, the Worker finds a free photo on Wikimedia Commons |
+| Photo | Files | Your own photo, for example an AI-generated one. The app uses, in order: this column, the page cover, then the first image placed inside the dish page. Only when there's none of these does it find a free photo on Wikimedia Commons |
 | Photo search | Text | Optional. Better search words for the stock photo |
 | Protein (g), Carbs (g), Fat (g), Fibre (g), Calories (kcal) | Number | Per serving |
 | Serving | Text | What one serving is, for example "2 rotis" |
 | Serves | Number | How many people the recipe as written feeds. The app uses it to scale amounts and the grocery list. Leave it empty for things like flour blends |
 | Prep time (min) | Number | |
-| Tags | Multi-select | High protein, Vegetarian, Make ahead, Office-friendly, Contains egg, Grab and Go. **Grab and Go** puts a dish on the Grab and Go page; so does Office-friendly with a prep time of 10 minutes or less |
+| Tags | Multi-select | High protein, Vegetarian, Make ahead, Office-friendly, Contains egg, Grab and Go. **Grab and Go** puts a dish on the Grab and Go page; so does Office-friendly with a prep time of 10 minutes or less. The weekly plan never puts Grab and Go dishes into meals: they're for taking out |
 | Nutrition source | Select | Estimated or Verified |
 | Name (Hindi), Name (Marathi) | Text | Dish name in Hindi and Marathi |
 | Prep ahead | Text | Optional reminders for the Prep page, one per line: `Night before: Soak rajma`, `2 nights before: Soak moong to sprout`, `Morning before: …`, `4 hours before: …`. When empty, the app finds them in the recipe (see below) |
@@ -81,6 +81,8 @@ The databases live under the **🥗 Meal Plan** page.
 | Time | Text | Optional, for example `21:30` |
 | Notes | Text | Shown on the meal page |
 | Planned by | Select | Me or Claude draft |
+
+**Snack Box Fillers**: no-prep things for the Office Snack Box, one row per portion: Name, Name (Hindi), Name (Marathi), Portion, Calories, Protein, Carbs, Fat, Fibre. Tick **Default** for the fillers that start selected, and **Hide** to leave one out of the app. The Office Snack Box dish is recognised by a `## Box fillers` heading in its page; on its meal page you pick up to 5 fillers and one Grab and Go dish, and the meal's nutrition is the sum of what you picked (saved on the device, per day).
 
 **Pantry**: what's in the kitchen, one row per item. The Shop list reads it through the Worker.
 
@@ -127,7 +129,7 @@ npx wrangler deploy
 
 The deploy prints the Worker's address, like `https://meal-master.<your-subdomain>.workers.dev`.
 
-**Or in the dashboard:** Cloudflare → **Workers & Pages → Create → Worker**, name it `meal-master`, then **Edit code**. Paste `worker/src/*.js` as files with the same names, keeping `index.js` as the main module, and deploy. Under **Settings → Variables and Secrets**, add the variables from the `[vars]` section of `wrangler.toml` as text, and `NOTION_TOKEN` and `APP_PIN` as secrets. Under **Settings → Triggers → Cron Triggers**, add `30 15 * * *`.
+**Or in the dashboard:** Cloudflare → **Workers & Pages → Create → Worker**, name it `meal-master`, then **Edit code**. Paste `worker/src/*.js` as files with the same names, keeping `index.js` as the main module, and deploy. Under **Settings → Variables and Secrets**, add the variables from the `[vars]` section of `wrangler.toml` as text, and `NOTION_TOKEN` and `APP_PIN` as secrets. No cron trigger is needed.
 
 **Recommended: a KV namespace.** It stores parsed recipes and photo lookups between requests, so a cold Worker doesn't have to fetch every recipe from Notion again. Create it with `npx wrangler kv namespace create MEAL_KV`, or Dashboard → **Storage & Databases → KV**. Then uncomment the `[[kv_namespaces]]` block in `wrangler.toml`, paste the id (it isn't a secret) and deploy again. In the dashboard, bind it under **Settings → Bindings** as `MEAL_KV`. Without KV the Worker still works: it falls back to the Cache API and memory, and its first call after a quiet spell fills recipes over a few requests. The app retries on its own.
 
@@ -139,10 +141,12 @@ Settings:
 | `APP_PIN` | secret | PIN the app sends as `X-App-Pin` to change meals. The Worker doesn't limit attempts, so use 8 or more characters, not a 4-digit code |
 | `WA_TOKEN`, `WA_PHONE_ID` | secrets | WhatsApp Cloud API token and phone number id (optional) |
 | `WA_TO` | variable, set in the dashboard | Recipient number(s) with country code, comma-separated, e.g. `919812345678`. Kept out of `wrangler.toml` so the number isn't published; `keep_vars = true` keeps it when you deploy |
-| `MEAL_DS`, `DISH_DS`, `COMBO_DS`, `PANTRY_DS` | variables | Notion data source ids (already filled in) |
+| `MEAL_DS`, `DISH_DS`, `COMBO_DS`, `PANTRY_DS`, `FILLER_DS` | variables | Notion data source ids (already filled in) |
 | `ALLOWED_ORIGIN` | variable | The site allowed to call the Worker: `https://bhattvishal.github.io` |
-| `WA_TEMPLATE`, `WA_LANG` | variables | Approved WhatsApp template name and language code |
-| `SCHEDULE_URL`, `PANTRY_URL` | variables | Notion links the app shows |
+| `WA_TEMPLATE` | variable, set in the dashboard | The approved WhatsApp template's name |
+| `WA_LANG` | variable | The template's language code, `en` |
+| `WA_BUTTON` | variable, optional | `none` if the template has no button |
+| `SCHEDULE_URL`, `PANTRY_URL`, `SITE_URL` | variables | Notion links the app shows, and the site's address |
 | `STOCK_PHOTOS` | variable, optional | `0` turns off Wikimedia photos for dishes without one |
 
 Check it: open `https://meal-master.<your-subdomain>.workers.dev/today`. An `{"error":"notion_404", "hint": …}` answer means the Meal Plan page isn't shared with the integration yet (step 1.2).
@@ -162,27 +166,62 @@ Put the Worker's address in `site/config.js` (`MEAL_API`) and merge to `master`.
 | `GET /week?start=YYYY-MM-DD` | Seven days from `start` |
 | `GET /dish/:id` | A dish with its recipe (English, Hindi, Marathi) and the recipe as plain text |
 | `POST /meal` | Change a meal's Main, Sides or Notes: `{"date","meal","main"?,"sides"?,"notes"?}` with the header `X-App-Pin`. It updates that day's normal row. If only a repeat covers the day, it adds a normal row that overrides the repeat for that day |
-| `GET /whatsapp/preview` | Exactly what the 9 pm message would send for tomorrow (numbers masked), without sending |
-| `GET /data` | Everything the app shows: meals from 14 days back to 60 ahead, their dishes and recipes, Grab and Go dishes, the pantry |
+| `GET /whatsapp/preview?date=YYYY-MM-DD` | The WhatsApp message for each planned meal of that day (default today), as it would be sent, without sending. Numbers are masked |
+| `GET /whatsapp/recipients` | Who the WhatsApp button sends to, and whether WhatsApp is set up. Needs `X-App-Pin` |
+| `POST /whatsapp/send` | Sends one meal: `{"date","meal","image"?}`, where `image` is the collage as a JPEG data URL. Needs `X-App-Pin` |
+| `GET /data` | Everything the app shows: meals from 14 days back to 60 ahead, their dishes and recipes, Grab and Go dishes, Snack Box Fillers, the pantry |
 | `GET /photo/:id` | A dish photo, fetched fresh from Notion (or Wikimedia) each time |
 
 Each meal says how it was resolved. A normal row for the date wins. Otherwise the most recent matching repeat applies: Daily, Weekdays (Mon–Fri), Weekends or Weekly (same weekday as its Date), from its Date until Until. A Combo supplies Main and Sides unless the row sets its own.
 
 GET answers are cached for about 60 seconds, and `POST /meal` clears the ones it affects. Errors are JSON with a hint, e.g. `{"error":"notion_404","hint":"Share the Meal Plan page with the integration: …"}`.
 
-**Tests:** `cd worker && npm install && npm test` runs the Worker in Cloudflare's local runtime against a fake Notion. It checks repeats and overrides, combos, photos, the PIN, caching, CORS and the WhatsApp message.
+**Tests:** `cd worker && npm install && npm test` runs the Worker in Cloudflare's local runtime against a fake Notion. It checks repeats and overrides, combos, photos (including images inside a page), Snack Box Fillers, the PIN, caching, CORS and sending a meal on WhatsApp.
 
-## WhatsApp at 9 pm
+## WhatsApp
 
-The Worker's cron (`30 15 * * *` UTC, which is 21:00 IST) sends **tomorrow's** menu to `WA_TO` with the approved template `WA_TEMPLATE` in `WA_LANG`. Until `WA_TOKEN` and `WA_PHONE_ID` are set, it logs "skipping" and does nothing.
+Each meal in the app has a green WhatsApp button. Tapping it:
+1. asks for the app PIN the first time (it's then saved on the device);
+2. asks "Do you want to share this meal with +91 …?", with the number(s) in `WA_TO`;
+3. draws the meal collage (up to 4 dishes) and sends it through the Worker, which uploads it to WhatsApp and sends your approved template.
 
-1. **Meta app**: at <https://developers.facebook.com>, an app with the WhatsApp use case. Under **WhatsApp → API Setup**, note the **Phone number ID**. With Meta's free test number, add each recipient under **To → Manage phone number list**.
-2. **Permanent token**: in <https://business.facebook.com/settings/system-users>, a system user with the app and WhatsApp account assigned, and a token with `whatsapp_business_messaging`. Save it as the `WA_TOKEN` secret, and the phone number id as `WA_PHONE_ID`.
-3. **Template**: create and get approved a **Utility** template in WhatsApp Manager, then set `WA_TEMPLATE` (its name) and `WA_LANG` (e.g. `hi`).
-4. **Template values**: `templateParams()` at the top of `worker/src/whatsapp.js` is the one place that decides the `{{1}}`, `{{2}}`, … values. For now it sends the date, then breakfast, lunch and dinner as Hindi dish names joined with ", ". Change it to match your template.
-5. Open `/whatsapp/preview` to see the exact message before the first evening.
+The message looks like this:
 
-Template messages are charged by Meta per message. Check Meta's price list for India.
+```
+[collage of the dishes]
+Today's Meal
+Lunch
+
+Main: 🫓 Paneer or Chana Wrap
+Sides: 🍚 Plain Rice • 🥣 Dal Fry (Toor) • 🥗 Green Salad
+Instructions: Pack by 8:30
+[View recipe]
+```
+
+WhatsApp doesn't allow line breaks inside a template value, so the sides share one line, separated by •. Each dish's icon is its Notion page emoji, and dish names are in English. Instructions come from the meal's Notes, and show "—" when there are none.
+
+Setup:
+
+1. **Meta app**: at <https://developers.facebook.com>, an app with the WhatsApp use case. Under **WhatsApp → API Setup**, pick the sending number in **From** and copy its **Phone number ID** (not the phone number, and not the WhatsApp Business Account ID). With Meta's free test number, add each recipient under **To → Manage phone number list**.
+2. **Permanent token**: in <https://business.facebook.com/settings/system-users>, add a system user (Admin), assign it the app and the WhatsApp account, then **Generate new token** with no expiry and `whatsapp_business_messaging` and `whatsapp_business_management`. Save it as the `WA_TOKEN` secret, and the phone number id as `WA_PHONE_ID`.
+3. **Template**: in WhatsApp Manager → **Message templates → Create template**, under the same WhatsApp account as the sending number:
+   - Category **Utility**, a name such as `todays_meal`, language **English**.
+   - **Header: Image.** Upload any food photo as the sample.
+   - **Body**:
+     ```
+     Today's Meal
+     {{1}}
+
+     Main: {{2}}
+     Sides: {{3}}
+     Instructions: {{4}}
+     ```
+     Samples: `Lunch`, `🫓 Paneer Wrap`, `🍚 Plain Rice • 🥣 Dal Fry (Toor)`, `Pack by 8:30`.
+   - **Button: Visit website**, text "View recipe", **Dynamic** URL `https://bhattvishal.github.io/meal-master/?m={{1}}`, sample `2026-10-05-lunch`. The app opens that meal.
+4. In the Worker's dashboard settings, set `WA_TO` (e.g. `919812345678`) and `WA_TEMPLATE` (the template's name). `WA_LANG` is `en`.
+5. Open `/whatsapp/preview` to check the message, then try the button on a meal.
+
+`templateParams()` at the top of `worker/src/whatsapp.js` is the one place that fills `{{1}}`…`{{4}}`, if the template ever changes. Template messages are charged by Meta per message; check Meta's price list for India.
 
 ## Install it on your Android tablet
 
@@ -208,11 +247,11 @@ meal-master/
 ├── .github/workflows/deploy.yml   Publishes site/ to GitHub Pages (no secrets)
 ├── worker/                        Cloudflare Worker: the API over Notion
 │   ├── wrangler.toml              Worker settings (no secrets)
-│   ├── src/index.js               Routes, CORS, PIN, caching, cron
+│   ├── src/index.js               Routes, CORS, PIN, caching
 │   ├── src/data.js                Menus, recipes, photos and pantry from Notion
 │   ├── src/schedule.js            Repeat and combo rules
 │   ├── src/notion.js              Notion API client and page parsing
-│   ├── src/whatsapp.js            Tomorrow's menu on WhatsApp (templateParams is the one place to edit)
+│   ├── src/whatsapp.js            A meal on WhatsApp (templateParams is the one place to edit)
 │   ├── src/store.js               Response cache and stored recipes
 │   └── test/                      End-to-end tests against a fake Notion
 ├── site/                          The published web app

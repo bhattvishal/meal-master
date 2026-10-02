@@ -1,97 +1,143 @@
-// Tomorrow's menu on WhatsApp (Meta Cloud API, graph.facebook.com), sent by the 21:00 IST cron.
-// GET /whatsapp/preview shows exactly what the cron would send, without sending.
+// One meal on WhatsApp (Meta Cloud API, graph.facebook.com), sent from the app's WhatsApp button.
+//
+// The approved template (WhatsApp Manager → Message templates), in WA_TEMPLATE / WA_LANG:
+//   Header: Image
+//   Body:   Today's Meal
+//           {{1}}
+//
+//           Main: {{2}}
+//           Sides: {{3}}
+//           Instructions: {{4}}
+//   Button: Visit website, dynamic URL https://bhattvishal.github.io/meal-master/?m={{1}}
+//
+// The header image is the meal collage the app draws and sends with the request.
 
+import { ApiError } from './notion.js';
 import { daysBetween } from './data.js';
-import { istToday, addDays } from './schedule.js';
+import { istToday, SLOTS } from './schedule.js';
 
-const dayLabel = (date) => new Date(`${date}T00:00:00Z`).toLocaleDateString('hi-IN', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' });
+const SLOT_LABEL = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack' };
 
-// A dish's name in Hindi, falling back to English.
-const hindi = (dish) => dish.names.hi || dish.names.en;
-const namesOf = (meal) => (meal ? [...meal.main, ...meal.sides].map(hindi) : []);
+// WhatsApp rejects template values with line breaks, tabs or more than 4 spaces in a row.
+const oneLine = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+const dishLabel = (d) => `${d.emoji || '🍽️'} ${d.names.en}`;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TEMPLATE VARIABLES — the one place to edit when the WhatsApp template is approved.
-// Return the body values in the template's {{1}}, {{2}}, … order. WhatsApp rejects empty
-// values, so use "—" for a meal that isn't planned.
+// TEMPLATE VARIABLES: the one place to edit if the template changes.
+// Returns the body values in {{1}}, {{2}}, … order. WhatsApp rejects empty values, so
+// anything missing is "—".
 //
-// `menu` is { date: 'YYYY-MM-DD', meals: { breakfast, lunch, dinner, snack } }, where each meal is
-// null or { main: [dish], sides: [dish], notes, time } and each dish has names.en/.hi/.mr.
-export function templateParams(menu) {
-  const list = (slot) => namesOf(menu.meals[slot]).join(', ') || '—';
+// `meal` is { date, meal: 'breakfast'|'lunch'|'dinner'|'snack', main: [dish], sides: [dish],
+// notes }, and each dish has emoji and names.en/.hi/.mr.
+export function templateParams(meal) {
   return [
-    dayLabel(menu.date), // {{1}} e.g. "बुधवार, 30 सितंबर"
-    list('breakfast'), // {{2}}
-    list('lunch'), // {{3}}
-    list('dinner'), // {{4}}
-  ];
+    SLOT_LABEL[meal.meal] ?? meal.meal, // {{1}} Breakfast, Lunch or Dinner
+    meal.main.map(dishLabel).join(' • ') || '—', // {{2}} 🫓 Paneer Wrap
+    meal.sides.map(dishLabel).join(' • ') || '—', // {{3}} 🍚 Plain Rice • 🥣 Dal Fry (Toor)
+    oneLine(meal.notes) || '—', // {{4}} instructions, optional
+  ].map(oneLine);
 }
+
+// The template body with the values filled in, as the cook will read it.
+export const renderText = (p) => `Today's Meal\n${p[0]}\n\nMain: ${p[1]}\nSides: ${p[2]}\nInstructions: ${p[3]}`;
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const recipients = (env) => String(env.WA_TO ?? '').split(',').map((n) => n.replace(/[^\d]/g, '')).filter(Boolean);
 const mask = (n) => (n.length > 4 ? `${'•'.repeat(n.length - 4)}${n.slice(-4)}` : n);
+// 919812345678 -> +91 98123 45678
+export const pretty = (n) => (n.length === 12 && n.startsWith('91') ? `+91 ${n.slice(2, 7)} ${n.slice(7)}` : `+${n}`);
 
-function payload(env, to, params) {
+const graph = (env) => `${env.WA_API_BASE || 'https://graph.facebook.com'}/${env.WA_API_VERSION || 'v26.0'}`;
+const siteUrl = (env) => (env.SITE_URL || 'https://bhattvishal.github.io/meal-master/').replace(/\/?$/, '/');
+
+export function missingConfig(env) {
+  return ['WA_TOKEN', 'WA_PHONE_ID', 'WA_TEMPLATE', 'WA_TO'].filter((k) => !env[k]);
+}
+
+function components(env, { date, meal }, params, header) {
+  return [
+    { type: 'header', parameters: [header] },
+    { type: 'body', parameters: params.map((text) => ({ type: 'text', text })) },
+    ...(env.WA_BUTTON === 'none' ? [] : [{ type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: `${date}-${meal}` }] }]),
+  ];
+}
+
+function payload(env, to, meal, params, header) {
   return {
     messaging_product: 'whatsapp',
     to,
     type: 'template',
-    template: {
-      name: env.WA_TEMPLATE,
-      language: { code: env.WA_LANG || 'hi' },
-      components: [{ type: 'body', parameters: params.map((text) => ({ type: 'text', text: String(text) })) }],
-    },
+    template: { name: env.WA_TEMPLATE, language: { code: env.WA_LANG || 'en' }, components: components(env, meal, params, header) },
   };
 }
 
-export async function tomorrowMenu(env, origin) {
-  const date = addDays(istToday(), 1);
+async function loadMeal(env, date, slot, origin) {
   const [day] = await daysBetween(env, date, date, origin);
-  return day;
+  const meal = day.meals[slot];
+  if (!meal || ![...meal.main, ...meal.sides].length) throw new ApiError(404, 'no_meal', `Nothing is planned for ${slot} on ${date}.`);
+  return meal;
 }
 
-// What the cron would send. Phone numbers are masked because this endpoint is public.
-export async function preview(env, origin) {
-  const menu = await tomorrowMenu(env, origin);
-  const params = templateParams(menu);
+// What a meal's message would look like, for each planned meal of a day. Numbers are masked.
+export async function preview(env, origin, date = istToday()) {
+  const [day] = await daysBetween(env, date, date, origin);
   const to = recipients(env);
-  return {
-    date: menu.date,
-    template: env.WA_TEMPLATE || null,
-    lang: env.WA_LANG || 'hi',
-    params,
-    text: params.map((p, i) => `{{${i + 1}}} ${p}`).join('\n'),
-    recipients: to.map(mask),
-    payloads: to.map((n) => ({ ...payload(env, n, params), to: mask(n) })),
-    ready: Boolean(env.WA_TOKEN && env.WA_PHONE_ID && env.WA_TEMPLATE && to.length),
-  };
+  const messages = SLOTS.filter((s) => day.meals[s]).map((slot) => {
+    const meal = day.meals[slot];
+    const params = templateParams(meal);
+    const header = { type: 'image', image: { link: '(the collage the app sends)' } };
+    return { meal: slot, params, text: renderText(params), payloads: to.map((n) => payload(env, mask(n), meal, params, header)) };
+  });
+  return { date, template: env.WA_TEMPLATE || null, lang: env.WA_LANG || 'en', recipients: to.map(mask), ready: !missingConfig(env).length, messages };
 }
 
-// Sends tomorrow's menu. Skips (with a log line, not an error) until WhatsApp is configured.
-export async function sendTomorrow(env, origin) {
-  if (!env.WA_TOKEN || !env.WA_PHONE_ID) {
-    console.log('WhatsApp: WA_TOKEN or WA_PHONE_ID is not set; skipping.');
-    return { skipped: true };
-  }
-  const to = recipients(env);
-  if (!env.WA_TEMPLATE || !to.length) {
-    console.log('WhatsApp: WA_TEMPLATE or WA_TO is not set; skipping.');
-    return { skipped: true };
-  }
-  const menu = await tomorrowMenu(env, origin);
-  const params = templateParams(menu);
-  const version = env.WA_API_VERSION || 'v26.0';
-  const failures = [];
-  for (const n of to) {
-    const res = await fetch(`${env.WA_API_BASE || 'https://graph.facebook.com'}/${version}/${env.WA_PHONE_ID}/messages`, {
+// Uploads the collage to WhatsApp and returns its media id.
+async function uploadImage(env, bytes) {
+  const form = new FormData();
+  form.append('messaging_product', 'whatsapp');
+  form.append('type', 'image/jpeg');
+  form.append('file', new Blob([bytes], { type: 'image/jpeg' }), 'meal.jpg');
+  const res = await fetch(`${graph(env)}/${env.WA_PHONE_ID}/media`, { method: 'POST', headers: { Authorization: `Bearer ${env.WA_TOKEN}` }, body: form });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok || !out.id) throw new ApiError(502, 'whatsapp_upload_failed', out.error?.message || `Upload failed (${res.status}).`);
+  return out.id;
+}
+
+const MAX_IMAGE = 5 * 1024 * 1024; // WhatsApp's limit for image headers
+
+function decodeImage(dataUrl) {
+  if (dataUrl == null) return null;
+  const m = typeof dataUrl === 'string' && dataUrl.match(/^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/);
+  if (!m) throw new ApiError(400, 'bad_image', 'image must be a data:image/jpeg;base64 URL.');
+  const bin = atob(m[1]);
+  if (bin.length > MAX_IMAGE) throw new ApiError(400, 'image_too_large', 'The collage is over WhatsApp\'s 5 MB limit.');
+  return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+}
+
+// Sends one meal to everyone in WA_TO. `image` is the app's collage as a JPEG data URL; without
+// one, the header uses the Meal Master card from the site.
+export async function sendMeal(env, { date, meal: slot, image }, origin) {
+  const missing = missingConfig(env);
+  if (missing.length) throw new ApiError(503, 'whatsapp_not_configured', `Set ${missing.join(', ')} in the Worker (see README → WhatsApp).`);
+  const bytes = decodeImage(image);
+  const meal = await loadMeal(env, date, slot, origin);
+  const params = templateParams(meal);
+  const header = bytes
+    ? { type: 'image', image: { id: await uploadImage(env, bytes) } }
+    : { type: 'image', image: { link: `${siteUrl(env)}icons/meal-card.png` } };
+
+  const sent = [];
+  const failed = [];
+  for (const n of recipients(env)) {
+    const res = await fetch(`${graph(env)}/${env.WA_PHONE_ID}/messages`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${env.WA_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload(env, n, params)),
+      body: JSON.stringify(payload(env, n, meal, params, header)),
     });
-    const body = await res.text();
-    if (res.ok) console.log(`WhatsApp: sent ${menu.date} menu to ${mask(n)}`);
-    else failures.push(`${mask(n)}: ${res.status} ${body.slice(0, 300)}`);
+    const out = await res.json().catch(() => ({}));
+    if (res.ok) sent.push(pretty(n));
+    else failed.push({ to: pretty(n), error: out.error?.error_data?.details || out.error?.message || `HTTP ${res.status}` });
   }
-  if (failures.length) throw new Error(`WhatsApp send failed for ${failures.join('; ')}`);
-  return { sent: to.length, date: menu.date };
+  if (!sent.length) throw new ApiError(502, 'whatsapp_failed', failed.map((f) => `${f.to}: ${f.error}`).join('; '));
+  return { ok: true, date, meal: slot, sent, failed, text: renderText(params) };
 }
