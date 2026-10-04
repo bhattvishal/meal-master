@@ -312,6 +312,12 @@ export async function loadPantry(env, budget) {
       unit: prop(p, 'Unit'),
       aliases: (prop(p, 'Also matches') ?? '').split(',').map((a) => a.trim()).filter(Boolean),
       i18n: { hi: prop(p, 'Name (Hindi)'), mr: prop(p, 'Name (Marathi)') },
+      // For the Stock page: what to use first.
+      perishable: prop(p, 'Perishable') ?? false,
+      bought: prop(p, 'Last bought')?.slice(0, 10) ?? null,
+      useWithin: prop(p, 'Use within (days)') ?? null,
+      useBy: prop(p, 'Use by')?.slice(0, 10) ?? null,
+      notes: prop(p, 'Notes'),
     });
   }
   return out;

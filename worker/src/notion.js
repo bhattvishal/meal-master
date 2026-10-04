@@ -98,6 +98,7 @@ export function prop(page, name) {
     case 'date': return p.date?.start ?? null;
     case 'relation': return p.relation.map((r) => r.id);
     case 'url': return p.url ?? null;
+    case 'checkbox': return p.checkbox;
     case 'files': return p.files.map((f) => f.file?.url ?? f.external?.url).filter(Boolean);
     default: return null;
   }

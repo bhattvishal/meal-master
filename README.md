@@ -15,6 +15,7 @@ The app opens on **Today**. Home is one tap away in the tab bar.
 | Grab and Go | `#/grab` | Quick office lunches: dishes ready in 10 minutes or less that pack well, planned or not. Tap one for its recipe. A 🔔 chip marks dishes that need soaking or sprouting ahead |
 | Prep | `#/prep` or `#/prep/4` | What to soak, sprout or ferment ahead for the next 2, 4 or 7 days, grouped by when to do it (tonight, tomorrow morning…), with tick boxes. The Today page shows a 🔔 chip when something is due within a day |
 | Settings | `#/settings` | Language (English, हिन्दी, मराठी), number of people, light or dark look. Saved on each device |
+| Stock | `#/stock` (the **Stock** button on Shop) | What to use first, so less goes to waste. Fresh food with a date is sorted by how soon it goes off: red for past its date or use today, amber for 1–2 days left, green for fresh. Each item shows the day it was bought, how many days it has been in stock, the date to use it by, and a planned meal or dishes that use it. Fresh food without a date is listed so you can add one. The Shop page shows a red "N to use first" bar when something needs using up |
 | Shop | `#/shop` or `#/shop/2026-09-28/7` | Grocery list for the next few days, scaled for your household, grouped by aisle, with tick-off boxes and a Share button. It checks the Pantry in Notion: things you have are set aside, and anything running low is added |
 
 ## How it works
@@ -97,6 +98,16 @@ The databases live under the **🥗 Meal Plan** page.
 | Also matches | Text | Other names recipes use, comma separated. For example "coriander" on Coriander leaves, or "oil" on Cooking oil |
 | Perishable, Last bought, Notes | | For your own tracking |
 | Name (Hindi), Name (Marathi) | Text | |
+
+For the **Stock** page, three columns say how long things keep:
+
+| Column | Type | What it does |
+|---|---|---|
+| Last bought | Date | The day you bought it. Update it when you restock |
+| Use within (days) | Number | How many days it keeps after buying (in the fridge if it goes there). Filled in for the fresh items; change any you like. A Perishable item without it is taken to keep 5 days |
+| Use by | Date | Optional: the expiry or best-before date on a pack. Used instead of Last bought + Use within |
+
+Items marked **Out of stock** don't appear on the Stock page.
 
 On the Shop list, an ingredient marked **In stock** moves to "Already in your pantry" at the bottom. One marked **Running low** or **Out of stock** stays on the list with a tag, and pantry items running low that no recipe needs are added to their aisle as "Restock". Ingredients with no pantry row are listed as usual. The Pantry's **To buy** view shows everything that isn't in stock.
 

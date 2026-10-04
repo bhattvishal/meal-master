@@ -4,10 +4,11 @@
 //   #/meal/YYYY-MM-DD/slot   one meal with its dishes and recipes
 //   #/week[/YYYY-MM-DD]      the week (Mon-Sun) containing that date
 //   #/shop[/YYYY-MM-DD/N]    grocery list for N days from that date
+//   #/stock                  what's in the pantry, what to use first
 //   #/prep[/N]               things to soak, sprout or ferment ahead for the next N days
 //   #/settings               language, household size and appearance
 
-import { getPeople, setPeople, factorFor, scaleLine, buildGroceries, applyPantry, getGoals, setGoal, goalProgress, DEFAULT_GOALS } from './kitchen.js';
+import { getPeople, setPeople, factorFor, scaleLine, buildGroceries, applyPantry, stockList, pantryAisle, AISLE_ORDER, getGoals, setGoal, goalProgress, DEFAULT_GOALS } from './kitchen.js';
 import { prepTasks, SLOT_TIME } from './prep.js';
 import { mealCollage } from './collage.js';
 import { LANGS, getLang, setLang, locale, t, tag, unit, grocery, amount, dishText } from './i18n.js';
@@ -609,6 +610,7 @@ function shopPage(from, days) {
     return `${badge}${[usedIn, ...extra].filter(Boolean).join('<span class="sep"> · </span>')}`;
   };
   const showUsedIn = loadFlag('shopUsedIn');
+  const urgent = stockList(data.pantry, {}, [], today()).filter((p) => URGENT.has(p.level)).length;
 
   return `
     <header class="page-head rise">
@@ -622,11 +624,13 @@ function shopPage(from, days) {
       <div class="range-chips">${ranges.map(([key, f, n]) => `<a class="chip${f === from && n === days ? ' active' : ''}" href="#/shop/${f}/${n}">${t(key)}</a>`).join('')}</div>
       <div class="scale-row">${peopleControl(people)}<span class="muted">${esc(peopleText(people))}</span></div>
     </div>
+    ${urgent ? `<a class="stock-alert rise" style="--i:2" href="#/stock"><span class="fresh-dot today"></span>${esc(t('stockAlert', { n: urgent }))}${chevron('right')}</a>` : ''}
     <div class="shop-summary rise" style="--i:2">
       <span><b>${meals.length}</b> ${t('meals')} · <b>${total}</b> ${t('items')}${total ? ` · <b data-done>${done}</b> ${t('inBasket')}` : ''}${have.length ? ` · <b>${have.length}</b> ${t('inPantryShort')}` : ''}</span>
       <span class="actions">
         ${total ? `<button class="btn${showUsedIn ? ' active' : ''}" data-used-in aria-pressed="${showUsedIn}">${t(showUsedIn ? 'hideUsedIn' : 'showUsedIn')}</button>` : ''}
         ${total ? `<button class="btn" data-share>${t('share')}</button><button class="btn" data-clear>${t('clear')}</button>` : ''}
+        <a class="btn" href="#/stock">${t('stockBtn')}</a>
         ${data.notionPantryUrl ? `<a class="btn" href="${esc(data.notionPantryUrl)}" target="_blank" rel="noopener">${t('editPantry')}</a>` : ''}
       </span>
     </div>
@@ -646,6 +650,87 @@ function shopPage(from, days) {
       <ul class="have-list">${have.map((it) => `<li><span>${esc(itemLabel(it))}</span>${it.amount ? ` <small class="muted">${esc(amount(it.amount))}${it.pantry.qty != null ? ` · ${esc(haveQty(it.pantry))}` : ''}</small>` : ''}</li>`).join('')}</ul>
     </details>` : ''}
     <p class="footer-note">${esc(t('amountsFor', { people: peopleText(people) }))}</p>
+    ${footer()}`;
+}
+
+// ---------- stock ----------
+
+const URGENT = new Set(['past', 'today', 'soon']);
+
+function stockPage() {
+  const now = today();
+  const items = stockList(data.pantry, data.dishes, data.meals, now);
+  const lang = getLang();
+  const label = (p) => (lang !== 'en' && p.i18n?.[lang]) || p.name;
+  const qty = (p) => (p.qty ? amount(`${p.qty}${p.unit ? ` ${p.unit}` : ''}`) : '');
+  const day = (d) => fmt(d, { weekday: 'short', day: 'numeric', month: 'short' });
+  const levelText = (p) => ({
+    past: t('lvlPast'),
+    today: t('lvlToday'),
+    soon: p.left === 1 ? t('lvlTomorrow') : t('lvlDaysLeft', { n: p.left }),
+    fresh: t('lvlDaysLeft', { n: p.left }),
+    undated: t('lvlUndated'),
+  })[p.level] ?? '';
+  const since = (p) => (p.daysIn == null ? '' : p.daysIn <= 0 ? t('boughtToday') : p.daysIn === 1 ? t('inStockOneDay') : t('inStockDays', { n: p.daysIn }));
+  const urgent = items.filter((p) => URGENT.has(p.level));
+  const undated = items.filter((p) => p.level === 'undated');
+  const counts = ['past', 'today', 'soon', 'fresh', 'undated']
+    .map((lv) => [lv, items.filter((p) => p.level === lv).length])
+    .filter(([, n]) => n);
+  const countLabel = { past: 'lvlPast', today: 'lvlToday', soon: 'lvlDaysLeft', fresh: 'lvlFresh', undated: 'lvlUndated' };
+
+  const row = (p) => {
+    const facts = [
+      p.bought ? `${t('boughtOn', { date: day(p.bought) })} · ${since(p)}` : '',
+      p.until ? t('useByDate', { date: day(p.until) }) : '',
+    ].filter(Boolean);
+    const use = p.planned
+      ? `<a href="#/meal/${p.planned.date}/${p.planned.meal}">${esc(t('plannedFor', { when: `${fmt(p.planned.date, { weekday: 'short' })} ${slotName(p.planned.meal)} · ${name(data.dishes[p.planned.dish])}` }))}</a>`
+      : p.dishes.length ? esc(t('ideasFor', { dishes: p.dishes.slice(0, 3).map((id) => name(data.dishes[id])).join(', ') })) : '';
+    return `<li class="stock-row ${p.level}">
+      <div class="stock-main"><b>${esc(label(p))}</b>${qty(p) ? ` <span class="muted">${esc(qty(p))}</span>` : ''}
+        <span class="fresh-badge ${p.level}">${esc(levelText(p))}</span></div>
+      ${facts.length ? `<small class="muted">${esc(facts.join(' · '))}</small>` : ''}
+      ${use ? `<small class="stock-use">${use}</small>` : ''}
+      ${p.notes ? `<small class="muted">${esc(p.notes)}</small>` : ''}
+    </li>`;
+  };
+  const chip = (p) => `<li class="stock-chip ${p.level ?? 'keeps'}" title="${esc([levelText(p), since(p)].filter(Boolean).join(' · '))}">
+    ${p.level ? `<span class="fresh-dot ${p.level}"></span>` : ''}<span>${esc(label(p))}</span>${p.daysIn != null ? `<small class="muted">${esc(t('daysShort', { n: Math.max(0, p.daysIn) }))}</small>` : ''}</li>`;
+  const byAisle = AISLE_ORDER
+    .map((aisle) => [aisle, items.filter((p) => pantryAisle(p) === aisle)])
+    .filter(([, list]) => list.length);
+
+  return `
+    <header class="page-head rise">
+      <div class="titles"><div class="eyebrow">${t('stockEyebrow')}</div><h1>${t('stockTitle')}</h1></div>
+      <div class="nav"><a class="icon-btn" href="#/shop" aria-label="${esc(t('shoppingList'))}">${chevron('left')}</a></div>
+    </header>
+    <div class="shop-summary rise" style="--i:1">
+      <span class="stock-counts">${counts.map(([lv, n]) => `<span><span class="fresh-dot ${lv}"></span><b>${n}</b> ${esc(lv === 'soon' ? t('lvlDaysLeft', { n: '1–2' }) : t(countLabel[lv]))}</span>`).join('')}</span>
+      <span class="actions">
+        <a class="btn" href="#/shop">${t('shoppingList')}</a>
+        ${data.notionPantryUrl ? `<a class="btn" href="${esc(data.notionPantryUrl)}" target="_blank" rel="noopener">${t('editPantry')}</a>` : ''}
+      </span>
+    </div>
+    ${!items.length ? `<div class="panel" style="text-align:center"><p class="muted">${t('noStock')}</p></div>` : `
+    <section class="panel rise" style="--i:2">
+      <h2>${t('stockTitle')}</h2>
+      ${urgent.length
+        ? `<p class="stock-note">${esc(t('useFirstNote', { items: urgent.slice(0, 4).map(label).join(', ') }))}</p>
+           <ul class="stock-rows">${urgent.map(row).join('')}</ul>`
+        : `<p class="muted">${t('nothingUrgent')}</p>`}
+    </section>
+    ${undated.length ? `<section class="panel rise" style="--i:3">
+      <h2>${t('undatedTitle')} <span class="muted">(${undated.length})</span></h2>
+      <p class="muted">${t('undatedHelp')}</p>
+      <ul class="stock-chips">${undated.map(chip).join('')}</ul>
+    </section>` : ''}
+    <details class="panel have-panel rise" style="--i:4">
+      <summary><h2>${t('allStock')} <span class="muted">(${items.length})</span></h2></summary>
+      <p class="muted">${t('stockHelp')}</p>
+      ${byAisle.map(([aisle, list]) => `<h3 class="stock-aisle">${esc(t(aisle))}</h3><ul class="stock-chips">${list.map(chip).join('')}</ul>`).join('')}
+    </details>`}
     ${footer()}`;
 }
 
@@ -985,6 +1070,7 @@ function route() {
       const days = Math.min(14, Math.max(1, Number(b) || 7));
       return { tab: 'shop', render: () => shopPage(from, days), swipe: (dir) => `#/shop/${addDays(from, dir * days)}/${days}` };
     }
+    case 'stock': return { tab: 'shop', render: stockPage };
     case 'grab': return { tab: 'grab', render: () => (a ? mealPage(today(), 'lunch', null, a) : grabPage()) };
     case 'prep': return { tab: 'prep', render: () => prepPage([2, 4, 7].includes(Number(a)) ? Number(a) : 2) };
     case 'settings': return { tab: 'settings', fit: true, render: settingsPage };

@@ -122,6 +122,8 @@ export function createMock() {
     Name: { type: 'title', title: rt('Paneer') }, Aisle: { type: 'select', select: { name: 'Dairy' } }, Status: { type: 'select', select: { name: 'Running low' } },
     Quantity: { type: 'number', number: 200 }, Unit: { type: 'select', select: { name: 'g' } }, 'Also matches': { type: 'rich_text', rich_text: rt('cottage cheese') },
     'Name (Hindi)': { type: 'rich_text', rich_text: rt('पनीर') }, 'Name (Marathi)': { type: 'rich_text', rich_text: [] },
+    Perishable: { type: 'checkbox', checkbox: true }, 'Last bought': { type: 'date', date: { start: '2026-09-30' } },
+    'Use within (days)': { type: 'number', number: 3 }, 'Use by': { type: 'date', date: null }, Notes: { type: 'rich_text', rich_text: rt('Top shelf') },
   } }];
 
   const calls = [];
