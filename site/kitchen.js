@@ -197,6 +197,8 @@ const DISPLAY = ['Vegetables & herbs', 'Fruit', 'Dairy', 'Pulses, grains & flour
 
 // Notion select options can't hold commas, so the Pantry aisle is spelled differently.
 const AISLES = { 'Pulses & grains & flours': 'Pulses, grains & flours' };
+export const AISLE_ORDER = DISPLAY;
+export const pantryAisle = (p) => (DISPLAY.includes(AISLES[p.aisle] ?? p.aisle) ? AISLES[p.aisle] ?? p.aisle : 'Other');
 
 // Finds the pantry item for a grocery name: first by name or "Also matches", then by
 // the words of one being all in the other ("turmeric" and "turmeric powder"), if only one item fits.
@@ -257,6 +259,63 @@ export function applyPantry(groups, pantry = []) {
       .map((category) => ({ category, items: out.get(category).sort((a, b) => a.name.localeCompare(b.name)) })),
     have: have.sort((a, b) => a.name.localeCompare(b.name)),
   };
+}
+
+// ---------- stock: what to use first ----------
+
+const DAY = 86400000;
+const dayNum = (iso) => Math.round(Date.parse(`${iso}T00:00:00Z`) / DAY);
+const isoOf = (n) => new Date(n * DAY).toISOString().slice(0, 10);
+// A fresh item without "Use within (days)" is taken to keep this long.
+const DEFAULT_KEEPS = 5;
+const URGENCY = { past: 0, today: 1, soon: 2, fresh: 3, undated: 4 };
+
+/**
+ * How fresh a pantry item is on `today`: days since it was bought, days left before its
+ * Use by date (or Last bought + Use within), and a level: 'past' (gone past it), 'today'
+ * (use today), 'soon' (1–2 days left), 'fresh', 'undated' (fresh food with no dates) or
+ * null (keeps; nothing to watch).
+ */
+export function freshness(p, today) {
+  const now = dayNum(today);
+  const daysIn = p.bought ? now - dayNum(p.bought) : null;
+  const keeps = p.useWithin ?? (p.perishable ? DEFAULT_KEEPS : null);
+  const until = p.useBy ?? (p.bought && keeps != null ? isoOf(dayNum(p.bought) + keeps) : null);
+  const left = until ? dayNum(until) - now : null;
+  let level = null;
+  if (left != null) level = left < 0 ? 'past' : left === 0 ? 'today' : left <= 2 ? 'soon' : 'fresh';
+  else if (p.perishable) level = 'undated';
+  return { daysIn, left, until, level };
+}
+
+/**
+ * Everything in the pantry that isn't out of stock, most urgent first, each with its
+ * freshness, the dishes that use it, and the first planned meal (from today) that does.
+ */
+export function stockList(pantry = [], dishes = {}, meals = [], today) {
+  const find = pantryFinder(pantry);
+  const usedIn = new Map();
+  const everything = [{ main: Object.keys(dishes), sides: [] }];
+  for (const group of buildGroceries(everything, dishes, 1)) {
+    for (const it of group.items) {
+      const p = find(it.name);
+      if (!p) continue;
+      const set = usedIn.get(p.id) ?? new Set();
+      it.dishes.forEach((d) => set.add(d));
+      usedIn.set(p.id, set);
+    }
+  }
+  const upcoming = meals.filter((m) => m.date >= today).sort((a, b) => a.date.localeCompare(b.date));
+  return pantry
+    .filter((p) => p.status !== 'out')
+    .map((p) => {
+      const dishIds = [...(usedIn.get(p.id) ?? [])];
+      const f = freshness(p, today);
+      const meal = dishIds.length ? upcoming.find((m) => (f.until == null || m.date <= f.until) && [...m.main, ...m.sides].some((id) => dishIds.includes(id))) : null;
+      const planned = meal ? { date: meal.date, meal: meal.meal, dish: [...meal.main, ...meal.sides].find((id) => dishIds.includes(id)) } : null;
+      return { ...p, ...f, dishes: dishIds, planned };
+    })
+    .sort((a, b) => (URGENCY[a.level] ?? 9) - (URGENCY[b.level] ?? 9) || (a.left ?? 999) - (b.left ?? 999) || a.name.localeCompare(b.name));
 }
 
 // ---------- daily goals ----------

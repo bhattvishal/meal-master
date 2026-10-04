@@ -173,6 +173,10 @@ try {
     assert.equal(wrap.i18n.hi.name, 'पनीर या चना रैप');
     assert.deepEqual(new Set(body.grabAndGo), new Set([D.wrap, D.salad]));
     assert.equal(body.pantry[0].status, 'low');
+    assert.deepEqual(
+      (({ perishable, bought, useWithin, useBy, notes }) => ({ perishable, bought, useWithin, useBy, notes }))(body.pantry[0]),
+      { perishable: true, bought: '2026-09-30', useWithin: 3, useBy: null, notes: 'Top shelf' },
+    );
     assert.ok(body.meals.some((m) => m.date === weekdayB && m.meal === 'lunch' && m.main[0] === D.paneer));
   });
   await check('GET answers are cached and pick up Notion changes after the cache time', async () => {

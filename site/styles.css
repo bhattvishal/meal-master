@@ -624,8 +624,38 @@ body.fit .settings .goals-panel { grid-column: 1 / -1; }
 .have-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
 .have-list li { padding: 6px 12px; border-radius: 999px; background: var(--chip, color-mix(in srgb, var(--ink) 6%, transparent)); font-size: 14px; }
 
+/* Stock: what to use first. Red = use today or past its date, amber = 1–2 days, green = fresh. */
+.fresh-dot { display: inline-block; flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--ink-3); vertical-align: middle; }
+.fresh-dot.past, .fresh-dot.today { background: #d64545; }
+.fresh-dot.soon { background: #e08a00; }
+.fresh-dot.fresh { background: #2e9d5b; }
+.fresh-badge { display: inline-block; margin-left: 6px; padding: 0 8px; border-radius: 999px; font-size: 11.5px; font-weight: 700; line-height: 20px; white-space: nowrap;
+  background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink-2); }
+.fresh-badge.past, .fresh-badge.today { background: color-mix(in srgb, #d64545 16%, transparent); color: color-mix(in srgb, #c03535 85%, var(--ink)); }
+.fresh-badge.soon { background: color-mix(in srgb, #e08a00 18%, transparent); color: color-mix(in srgb, #c77700 85%, var(--ink)); }
+.fresh-badge.fresh { background: color-mix(in srgb, #2e9d5b 16%, transparent); color: color-mix(in srgb, #23804a 85%, var(--ink)); }
+.stock-alert { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 10px 14px; border-radius: 14px; font-weight: 700;
+  background: color-mix(in srgb, #d64545 12%, var(--surface)); color: inherit; text-decoration: none; box-shadow: var(--shadow); }
+.stock-alert svg { margin-left: auto; width: 18px; height: 18px; }
+.stock-counts { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.stock-counts > span { display: inline-flex; align-items: center; gap: 6px; }
+.stock-note { margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; font-weight: 600; background: color-mix(in srgb, #d64545 9%, transparent); }
+.stock-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.stock-row { display: grid; gap: 3px; padding: 10px 12px 10px 14px; border-radius: 12px; background: var(--surface-2); border-left: 4px solid var(--ink-3); }
+.stock-row.past, .stock-row.today { border-left-color: #d64545; }
+.stock-row.soon { border-left-color: #e08a00; }
+.stock-row .stock-main { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.stock-row small { font-size: 12.5px; line-height: 1.35; }
+.stock-use a { color: var(--accent); font-weight: 600; }
+.stock-chips { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.stock-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; font-size: 14px;
+  background: var(--chip, color-mix(in srgb, var(--ink) 6%, transparent)); }
+.stock-chip small { font-size: 11.5px; }
+body[data-page="stock"] main > .panel { margin-bottom: 14px; }
+.stock-aisle { margin: 14px 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
+
 /* Shop: full width; on wide screens every aisle sits side by side in one row. */
-body[data-page="shop"] main, body[data-page="prep"] main { max-width: none; }
+body[data-page="shop"] main, body[data-page="prep"] main, body[data-page="stock"] main { max-width: none; }
 @media (min-width: 1000px) {
   body[data-page="shop"] main { padding-left: clamp(16px, 2.2vw, 28px); padding-right: clamp(16px, 2.2vw, 28px); }
   .shop-grid { columns: auto; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: clamp(10px, 1.2vw, 18px); align-items: start; }
